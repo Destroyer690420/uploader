@@ -9,8 +9,8 @@
 | Metric | Value |
 |---|---|
 | **Status** | ⚪ **Idle** |
-| **Queue** | **17** video(s) waiting |
-| **Last Run** | `2026-02-12 17:00:53 UTC` |
+| **Queue** | **16** video(s) waiting |
+| **Last Run** | `2026-02-12 19:04:46 UTC` |
 
 ---
 
@@ -18,11 +18,11 @@
 
 | Field | Value |
 |---|---|
-| **Timestamp** | `2026-02-12 17:00:53` |
-| **Tweet ID** | `2019782629113966852` |
-| **Author** | @ankit_acerbic |
-| **YouTube** | [▶ Watch](https://youtu.be/G0JAJrsfhOQ) |
-| **Instagram** | ✅ Media ID `17875975983405626` |
+| **Timestamp** | `2026-02-12 19:04:46` |
+| **Tweet ID** | `2019811262474203239` |
+| **Author** | @memer_mitron |
+| **YouTube** | [▶ Watch](https://youtu.be/y8nxwmk2ga0) |
+| **Instagram** | ✅ Media ID `18073688252573111` |
 
 ---
 
@@ -48,4 +48,4 @@ _No recent errors._
 
 ---
 
-<sub>Last updated: 2026-02-12 17:00:53 UTC · Powered by GitHub Actions</sub>
+<sub>Last updated: 2026-02-12 19:04:46 UTC · Powered by GitHub Actions</sub>
