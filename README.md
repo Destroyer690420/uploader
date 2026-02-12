@@ -9,8 +9,8 @@
 | Metric | Value |
 |---|---|
 | **Status** | ⚪ **Idle** |
-| **Queue** | **16** video(s) waiting |
-| **Last Run** | `2026-02-12 16:06:35 UTC` |
+| **Queue** | **17** video(s) waiting |
+| **Last Run** | `2026-02-12 17:00:53 UTC` |
 
 ---
 
@@ -18,11 +18,11 @@
 
 | Field | Value |
 |---|---|
-| **Timestamp** | `2026-02-12 16:06:35` |
-| **Tweet ID** | `2019712676512063911` |
-| **Author** | @ShitpostReels |
-| **YouTube** | [▶ Watch](https://youtu.be/WVEM5r_8F1k) |
-| **Instagram** | ✅ Media ID `17853208212623355` |
+| **Timestamp** | `2026-02-12 17:00:53` |
+| **Tweet ID** | `2019782629113966852` |
+| **Author** | @ankit_acerbic |
+| **YouTube** | [▶ Watch](https://youtu.be/G0JAJrsfhOQ) |
+| **Instagram** | ✅ Media ID `17875975983405626` |
 
 ---
 
@@ -48,4 +48,4 @@ _No recent errors._
 
 ---
 
-<sub>Last updated: 2026-02-12 16:06:35 UTC · Powered by GitHub Actions</sub>
+<sub>Last updated: 2026-02-12 17:00:53 UTC · Powered by GitHub Actions</sub>
