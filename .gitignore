@@ -23,3 +23,21 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+
+# Scraper state
+processed_ids.txt
+
+# Downloaded videos
+temp_videos/
+
+# Secrets & auth
+public/cookies.json
+
+# Daily counter (tracked in Actions via git commit)
+yt_daily_count.txt
