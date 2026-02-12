@@ -29,6 +29,12 @@ jobs:
       - name: 📦 Install dependencies
         run: pip install -r requirements.txt
 
+      # ── Recreate cookies.json from secret ──
+      - name: 🍪 Write cookies.json
+        run: |
+          mkdir -p public
+          echo '${{ secrets.COOKIES_JSON }}' > public/cookies.json
+
       # ── Run the pipeline ──
       - name: 🚀 Run pipeline
         env:
@@ -46,6 +52,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add processed_ids.txt README.md yt_daily_count.txt
+          git add -f processed_ids.txt yt_daily_count.txt README.md
           git diff --staged --quiet || git commit -m "🤖 Bot: Dashboard & Queue Updated"
           git push
