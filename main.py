@@ -24,7 +24,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from scraper import fetch_bookmarked_videos, save_processed_id
-from downloader import download_video, cleanup_video
+from downloader import download_video, cleanup_video, convert_to_vertical
 from uploader import upload_video
 
 # ---------------------------------------------------------------------------
@@ -286,6 +286,17 @@ async def run_pipeline() -> None:
         "[%s] Download complete — %.1f MB at %s",
         timestamp(), file_size_mb, local_path,
     )
+
+    # ------------------------------------------------------------------
+    # STEP 3b: Convert to 9:16 vertical (for YouTube Shorts)
+    # ------------------------------------------------------------------
+    logger.info("[%s] STEP 3b — Converting to 9:16 vertical...", timestamp())
+    vertical_path = convert_to_vertical(local_path)
+    if vertical_path:
+        local_path = vertical_path
+        logger.info("[%s] Conversion complete → %s", timestamp(), local_path)
+    else:
+        logger.warning("Conversion failed — uploading original file instead.")
 
     # ------------------------------------------------------------------
     # STEP 4: Upload to YouTube + Instagram

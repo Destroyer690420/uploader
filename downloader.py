@@ -12,6 +12,7 @@ Usage (standalone test):
 import logging
 import os
 import shutil
+import subprocess
 from pathlib import Path
 
 import yt_dlp
@@ -112,6 +113,93 @@ def _find_downloaded_file(output_dir: str, tweet_id: str) -> str | None:
         candidate = os.path.join(output_dir, f"{tweet_id}.{ext}")
         if os.path.exists(candidate):
             return candidate
+    return None
+
+
+# ===================================================================
+# 1b. Convert video to 9:16 vertical (for YouTube Shorts)
+# ===================================================================
+
+def convert_to_vertical(filepath: str) -> str | None:
+    """
+    Converts a video to 9:16 (1080x1920) using ffmpeg.
+    
+    If the video is already vertical (height > width), it just scales it.
+    If landscape/square, it creates a blurred background fill effect.
+    
+    Returns the path to the converted file, or None on failure.
+    """
+    if not os.path.exists(filepath):
+        logger.error("convert_to_vertical: file not found — %s", filepath)
+        return None
+
+    # Probe video dimensions
+    try:
+        probe = subprocess.run(
+            [
+                "ffprobe", "-v", "error",
+                "-select_streams", "v:0",
+                "-show_entries", "stream=width,height",
+                "-of", "csv=p=0:s=x",
+                filepath,
+            ],
+            capture_output=True, text=True, timeout=15,
+        )
+        dims = probe.stdout.strip().split("x")
+        width, height = int(dims[0]), int(dims[1])
+        logger.info("Video dimensions: %dx%d", width, height)
+    except Exception as e:
+        logger.warning("Could not probe dimensions (%s), converting anyway.", e)
+        width, height = 1920, 1080  # assume landscape
+
+    # Build output path
+    base, ext = os.path.splitext(filepath)
+    output_path = f"{base}_vertical.mp4"
+
+    # ffmpeg filter: blurred background + centered original
+    # Works for any input aspect ratio
+    vf_filter = (
+        "split[original][blur];"
+        "[blur]scale=1080:1920:force_original_aspect_ratio=increase,"
+        "crop=1080:1920,boxblur=25:5[bg];"
+        "[original]scale=1080:1920:force_original_aspect_ratio=decrease[fg];"
+        "[bg][fg]overlay=(W-w)/2:(H-h)/2"
+    )
+
+    cmd = [
+        "ffmpeg", "-y", "-i", filepath,
+        "-vf", vf_filter,
+        "-c:v", "libx264", "-preset", "fast", "-crf", "23",
+        "-c:a", "aac", "-b:a", "128k",
+        "-movflags", "+faststart",
+        output_path,
+    ]
+
+    logger.info("Converting to 9:16 vertical format...")
+
+    try:
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=300,
+        )
+        if result.returncode != 0:
+            logger.error("ffmpeg conversion failed:\n%s", result.stderr[-500:])
+            return None
+    except subprocess.TimeoutExpired:
+        logger.error("ffmpeg conversion timed out (300s).")
+        return None
+    except FileNotFoundError:
+        logger.error("ffmpeg not found! Install ffmpeg to enable 9:16 conversion.")
+        return None
+
+    if os.path.exists(output_path):
+        size_mb = os.path.getsize(output_path) / (1024 * 1024)
+        logger.info("✅ Converted to vertical: %.1f MB → %s", size_mb, output_path)
+
+        # Delete original, keep only vertical version
+        os.remove(filepath)
+        return output_path
+
+    logger.error("Converted file not found at %s", output_path)
     return None
 
 
