@@ -107,3 +107,47 @@ create policy "Users can view own logs"
 create policy "Service role can insert logs"
   on public.upload_logs for insert
   with check (true);
+
+-- =====================================================
+-- Video Queue Table
+-- Stores downloaded tweet videos pending upload
+-- =====================================================
+create table if not exists public.video_queue (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete cascade not null,
+  tweet_url text not null,
+  video_filename text not null,
+  caption text,
+  status text default 'pending' check (status in ('pending', 'uploading', 'completed', 'failed')),
+  created_at timestamp with time zone default now()
+);
+
+-- Enable RLS
+alter table public.video_queue enable row level security;
+
+-- RLS Policies
+create policy "Users can view own queue"
+  on public.video_queue for select
+  using (auth.uid() = user_id);
+
+create policy "Users can insert to own queue"
+  on public.video_queue for insert
+  with check (auth.uid() = user_id);
+
+create policy "Users can update own queue"
+  on public.video_queue for update
+  using (auth.uid() = user_id);
+
+create policy "Users can delete from own queue"
+  on public.video_queue for delete
+  using (auth.uid() = user_id);
+
+-- Service role can manage all queue items (for server.js)
+create policy "Service role can manage queue"
+  on public.video_queue for all
+  using (true)
+  with check (true);
+
+-- Index for faster lookups
+create index if not exists idx_video_queue_user_status 
+  on public.video_queue(user_id, status);

@@ -115,9 +115,10 @@ async function uploadToYouTube(
 
         const result = await uploadResponse.json()
         return { success: true, videoId: result.id }
-    } catch (error) {
+    } catch (error: unknown) {
         console.error('YouTube upload error:', error)
-        return { success: false, error: error.message }
+        const errorMessage = error instanceof Error ? error.message : String(error)
+        return { success: false, error: errorMessage }
     }
 }
 
@@ -198,11 +199,23 @@ async function uploadToInstagram(
         }
 
         return { success: true, mediaId: publishData.id }
-    } catch (error) {
+    } catch (error: unknown) {
         console.error('Instagram upload error:', error)
-        return { success: false, error: error.message }
+        const errorMessage = error instanceof Error ? error.message : String(error)
+        return { success: false, error: errorMessage }
     }
 }
+
+// Hardcoded credentials
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || ''
+const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_KEY') || ''
+
+const YOUTUBE_CLIENT_ID = Deno.env.get('YOUTUBE_CLIENT_ID') || ''
+const YOUTUBE_CLIENT_SECRET = Deno.env.get('YOUTUBE_CLIENT_SECRET') || ''
+const YOUTUBE_REFRESH_TOKEN = Deno.env.get('YOUTUBE_REFRESH_TOKEN') || ''
+
+const INSTAGRAM_ACCESS_TOKEN = Deno.env.get('INSTAGRAM_ACCESS_TOKEN') || ''
+const INSTAGRAM_ACCOUNT_ID = Deno.env.get('INSTAGRAM_ACCOUNT_ID') || ''
 
 serve(async (req) => {
     // Handle CORS preflight
@@ -211,9 +224,11 @@ serve(async (req) => {
     }
 
     try {
-        const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-        const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-        const supabase = createClient(supabaseUrl, supabaseServiceKey)
+        if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
+            throw new Error('Missing Supabase configuration')
+        }
+
+        const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
         // Parse request body
         const { video_filename, caption, user_id }: RequestBody = await req.json()
@@ -239,29 +254,16 @@ serve(async (req) => {
         const videoUrl = signedUrlData.signedUrl
         console.log(`Signed URL generated`)
 
-        // Fetch user credentials
-        const { data: credentialsData, error: credentialsError } = await supabase
-            .from('api_credentials')
-            .select('*')
-            .eq('user_id', user_id)
-
-        if (credentialsError) {
-            throw new Error(`Failed to fetch credentials: ${credentialsError.message}`)
-        }
-
-        const credentials: Credentials = {}
-        for (const cred of credentialsData || []) {
-            if (cred.platform === 'youtube') {
-                credentials.youtube = {
-                    clientId: cred.account_id || '',
-                    clientSecret: cred.access_token || '',
-                    refreshToken: cred.refresh_token || '',
-                }
-            } else if (cred.platform === 'instagram') {
-                credentials.instagram = {
-                    accessToken: cred.access_token || '',
-                    accountId: cred.account_id || '',
-                }
+        // Use hardcoded credentials
+        const credentials: Credentials = {
+            youtube: {
+                clientId: YOUTUBE_CLIENT_ID,
+                clientSecret: YOUTUBE_CLIENT_SECRET,
+                refreshToken: YOUTUBE_REFRESH_TOKEN,
+            },
+            instagram: {
+                accessToken: INSTAGRAM_ACCESS_TOKEN,
+                accountId: INSTAGRAM_ACCOUNT_ID,
             }
         }
 
@@ -289,9 +291,9 @@ serve(async (req) => {
                 results.youtube = ytResult.success ? 'success' : 'failed'
                 results.youtube_video_id = ytResult.videoId || null
                 results.youtube_error = ytResult.error || null
-            } catch (error) {
+            } catch (error: unknown) {
                 results.youtube = 'failed'
-                results.youtube_error = error.message
+                results.youtube_error = error instanceof Error ? error.message : String(error)
             }
         } else {
             console.log('YouTube credentials not configured, skipping...')
@@ -325,7 +327,7 @@ serve(async (req) => {
                 results.file_deleted = true
                 console.log('Video deleted from storage')
             }
-        } catch (error) {
+        } catch (error: unknown) {
             console.error('Cleanup error:', error)
         }
 
@@ -341,7 +343,7 @@ serve(async (req) => {
                 instagram_media_id: results.instagram_media_id,
                 error_message: results.youtube_error || results.instagram_error || null,
             })
-        } catch (error) {
+        } catch (error: unknown) {
             console.error('Failed to log upload:', error)
         }
 
@@ -349,10 +351,11 @@ serve(async (req) => {
             JSON.stringify(results),
             { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         )
-    } catch (error) {
+    } catch (error: unknown) {
         console.error('Edge function error:', error)
+        const errorMessage = error instanceof Error ? error.message : String(error)
         return new Response(
-            JSON.stringify({ error: error.message }),
+            JSON.stringify({ error: errorMessage }),
             { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         )
     }
