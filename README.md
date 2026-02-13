@@ -9,8 +9,8 @@
 | Metric | Value |
 |---|---|
 | **Status** | ⚪ **Idle** |
-| **Queue** | **19** video(s) waiting |
-| **Last Run** | `2026-02-13 16:50:25 UTC` |
+| **Queue** | **18** video(s) waiting |
+| **Last Run** | `2026-02-13 18:53:12 UTC` |
 
 ---
 
@@ -18,11 +18,11 @@
 
 | Field | Value |
 |---|---|
-| **Timestamp** | `2026-02-13 16:50:25` |
-| **Tweet ID** | `2021997134221033513` |
+| **Timestamp** | `2026-02-13 18:53:12` |
+| **Tweet ID** | `2022017776349851789` |
 | **Author** | @iiamkrshn |
 | **YouTube** | ❌ Failed |
-| **Instagram** | ✅ Media ID `18064593761301585` |
+| **Instagram** | ✅ Media ID `18090184162875660` |
 
 ---
 
@@ -48,4 +48,4 @@ _No recent errors._
 
 ---
 
-<sub>Last updated: 2026-02-13 16:50:25 UTC · Powered by GitHub Actions</sub>
+<sub>Last updated: 2026-02-13 18:53:12 UTC · Powered by GitHub Actions</sub>
