@@ -9,8 +9,8 @@
 | Metric | Value |
 |---|---|
 | **Status** | ⚪ **Idle** |
-| **Queue** | **14** video(s) waiting |
-| **Last Run** | `2026-02-12 22:34:32 UTC` |
+| **Queue** | **13** video(s) waiting |
+| **Last Run** | `2026-02-13 02:25:22 UTC` |
 
 ---
 
@@ -18,11 +18,11 @@
 
 | Field | Value |
 |---|---|
-| **Timestamp** | `2026-02-12 22:34:32` |
-| **Tweet ID** | `2020021411017068820` |
-| **Author** | @Kritical_62 |
-| **YouTube** | [▶ Watch](https://youtu.be/0-D8R5beLMc) |
-| **Instagram** | ✅ Media ID `18037925876686135` |
+| **Timestamp** | `2026-02-13 02:25:22` |
+| **Tweet ID** | `2020135462187463007` |
+| **Author** | @ShitpostReels |
+| **YouTube** | [▶ Watch](https://youtu.be/a8lKnpcy_3A) |
+| **Instagram** | ✅ Media ID `17910452487302756` |
 
 ---
 
@@ -48,4 +48,4 @@ _No recent errors._
 
 ---
 
-<sub>Last updated: 2026-02-12 22:34:32 UTC · Powered by GitHub Actions</sub>
+<sub>Last updated: 2026-02-13 02:25:22 UTC · Powered by GitHub Actions</sub>
