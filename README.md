@@ -9,8 +9,8 @@
 | Metric | Value |
 |---|---|
 | **Status** | ⚪ **Idle** |
-| **Queue** | **16** video(s) waiting |
-| **Last Run** | `2026-02-13 14:41:34 UTC` |
+| **Queue** | **19** video(s) waiting |
+| **Last Run** | `2026-02-13 16:50:25 UTC` |
 
 ---
 
@@ -18,11 +18,11 @@
 
 | Field | Value |
 |---|---|
-| **Timestamp** | `2026-02-13 14:41:34` |
-| **Tweet ID** | `2021960498523038012` |
-| **Author** | @nocontextmemes |
+| **Timestamp** | `2026-02-13 16:50:25` |
+| **Tweet ID** | `2021997134221033513` |
+| **Author** | @iiamkrshn |
 | **YouTube** | ❌ Failed |
-| **Instagram** | ✅ Media ID `18424691950185993` |
+| **Instagram** | ✅ Media ID `18064593761301585` |
 
 ---
 
@@ -48,4 +48,4 @@ _No recent errors._
 
 ---
 
-<sub>Last updated: 2026-02-13 14:41:34 UTC · Powered by GitHub Actions</sub>
+<sub>Last updated: 2026-02-13 16:50:25 UTC · Powered by GitHub Actions</sub>
