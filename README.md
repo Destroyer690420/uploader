@@ -9,8 +9,8 @@
 | Metric | Value |
 |---|---|
 | **Status** | ⚪ **Idle** |
-| **Queue** | **18** video(s) waiting |
-| **Last Run** | `2026-02-13 20:40:14 UTC` |
+| **Queue** | **17** video(s) waiting |
+| **Last Run** | `2026-02-13 22:35:17 UTC` |
 
 ---
 
@@ -18,11 +18,11 @@
 
 | Field | Value |
 |---|---|
-| **Timestamp** | `2026-02-13 20:40:14` |
-| **Tweet ID** | `2022168119310209482` |
-| **Author** | @gentleman07_ |
+| **Timestamp** | `2026-02-13 22:35:17` |
+| **Tweet ID** | `2022075743279493283` |
+| **Author** | @Hyperblaxe |
 | **YouTube** | ❌ Failed |
-| **Instagram** | ✅ Media ID `17994436787876211` |
+| **Instagram** | ✅ Media ID `17860602141536133` |
 
 ---
 
@@ -48,4 +48,4 @@ _No recent errors._
 
 ---
 
-<sub>Last updated: 2026-02-13 20:40:14 UTC · Powered by GitHub Actions</sub>
+<sub>Last updated: 2026-02-13 22:35:17 UTC · Powered by GitHub Actions</sub>
