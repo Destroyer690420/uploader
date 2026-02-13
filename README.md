@@ -10,7 +10,7 @@
 |---|---|
 | **Status** | ⚪ **Idle** |
 | **Queue** | **18** video(s) waiting |
-| **Last Run** | `2026-02-13 18:53:12 UTC` |
+| **Last Run** | `2026-02-13 20:40:14 UTC` |
 
 ---
 
@@ -18,11 +18,11 @@
 
 | Field | Value |
 |---|---|
-| **Timestamp** | `2026-02-13 18:53:12` |
-| **Tweet ID** | `2022017776349851789` |
-| **Author** | @iiamkrshn |
+| **Timestamp** | `2026-02-13 20:40:14` |
+| **Tweet ID** | `2022168119310209482` |
+| **Author** | @gentleman07_ |
 | **YouTube** | ❌ Failed |
-| **Instagram** | ✅ Media ID `18090184162875660` |
+| **Instagram** | ✅ Media ID `17994436787876211` |
 
 ---
 
@@ -48,4 +48,4 @@ _No recent errors._
 
 ---
 
-<sub>Last updated: 2026-02-13 18:53:12 UTC · Powered by GitHub Actions</sub>
+<sub>Last updated: 2026-02-13 20:40:14 UTC · Powered by GitHub Actions</sub>
