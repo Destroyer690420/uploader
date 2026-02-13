@@ -10,7 +10,7 @@
 |---|---|
 | **Status** | ⚪ **Idle** |
 | **Queue** | **17** video(s) waiting |
-| **Last Run** | `2026-02-13 10:41:07 UTC` |
+| **Last Run** | `2026-02-13 13:02:55 UTC` |
 
 ---
 
@@ -18,11 +18,11 @@
 
 | Field | Value |
 |---|---|
-| **Timestamp** | `2026-02-13 10:41:07` |
-| **Tweet ID** | `2021932885901537474` |
-| **Author** | @onlineinsane |
-| **YouTube** | [▶ Watch](https://youtu.be/LiYBzcke6Y4) |
-| **Instagram** | ✅ Media ID `17987188535776606` |
+| **Timestamp** | `2026-02-13 13:02:55` |
+| **Tweet ID** | `2021874058548457518` |
+| **Author** | @BekaarAaadmi |
+| **YouTube** | [▶ Watch](https://youtu.be/7QIircwKgrI) |
+| **Instagram** | ✅ Media ID `17874363660514468` |
 
 ---
 
@@ -48,4 +48,4 @@ _No recent errors._
 
 ---
 
-<sub>Last updated: 2026-02-13 10:41:07 UTC · Powered by GitHub Actions</sub>
+<sub>Last updated: 2026-02-13 13:02:55 UTC · Powered by GitHub Actions</sub>
