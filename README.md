@@ -9,8 +9,8 @@
 | Metric | Value |
 |---|---|
 | **Status** | ⚪ **Idle** |
-| **Queue** | **19** video(s) waiting |
-| **Last Run** | `2026-02-13 07:01:27 UTC` |
+| **Queue** | **18** video(s) waiting |
+| **Last Run** | `2026-02-13 08:44:10 UTC` |
 
 ---
 
@@ -18,11 +18,11 @@
 
 | Field | Value |
 |---|---|
-| **Timestamp** | `2026-02-13 07:01:27` |
-| **Tweet ID** | `2021862274672333020` |
-| **Author** | @memer_mitron |
-| **YouTube** | [▶ Watch](https://youtu.be/WUA6yhCv9Xg) |
-| **Instagram** | ✅ Media ID `18092954792296334` |
+| **Timestamp** | `2026-02-13 08:44:10` |
+| **Tweet ID** | `2022104180798718282` |
+| **Author** | @iShowShitpost |
+| **YouTube** | [▶ Watch](https://youtu.be/_Oy51hzuv28) |
+| **Instagram** | ✅ Media ID `18056546327397010` |
 
 ---
 
@@ -48,4 +48,4 @@ _No recent errors._
 
 ---
 
-<sub>Last updated: 2026-02-13 07:01:27 UTC · Powered by GitHub Actions</sub>
+<sub>Last updated: 2026-02-13 08:44:10 UTC · Powered by GitHub Actions</sub>
