@@ -9,8 +9,8 @@
 | Metric | Value |
 |---|---|
 | **Status** | ⚪ **Idle** |
-| **Queue** | **17** video(s) waiting |
-| **Last Run** | `2026-02-13 13:02:55 UTC` |
+| **Queue** | **16** video(s) waiting |
+| **Last Run** | `2026-02-13 14:41:34 UTC` |
 
 ---
 
@@ -18,11 +18,11 @@
 
 | Field | Value |
 |---|---|
-| **Timestamp** | `2026-02-13 13:02:55` |
-| **Tweet ID** | `2021874058548457518` |
-| **Author** | @BekaarAaadmi |
-| **YouTube** | [▶ Watch](https://youtu.be/7QIircwKgrI) |
-| **Instagram** | ✅ Media ID `17874363660514468` |
+| **Timestamp** | `2026-02-13 14:41:34` |
+| **Tweet ID** | `2021960498523038012` |
+| **Author** | @nocontextmemes |
+| **YouTube** | ❌ Failed |
+| **Instagram** | ✅ Media ID `18424691950185993` |
 
 ---
 
@@ -48,4 +48,4 @@ _No recent errors._
 
 ---
 
-<sub>Last updated: 2026-02-13 13:02:55 UTC · Powered by GitHub Actions</sub>
+<sub>Last updated: 2026-02-13 14:41:34 UTC · Powered by GitHub Actions</sub>
