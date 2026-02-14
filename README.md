@@ -9,8 +9,8 @@
 | Metric | Value |
 |---|---|
 | **Status** | ⚪ **Idle** |
-| **Queue** | **19** video(s) waiting |
-| **Last Run** | `2026-02-14 08:34:57 UTC` |
+| **Queue** | **18** video(s) waiting |
+| **Last Run** | `2026-02-14 10:29:16 UTC` |
 
 ---
 
@@ -18,11 +18,11 @@
 
 | Field | Value |
 |---|---|
-| **Timestamp** | `2026-02-14 08:34:57` |
-| **Tweet ID** | `2022052087522353416` |
-| **Author** | @brainrotpostig |
-| **YouTube** | [▶ Watch](https://youtu.be/hKP9FATXk3k) |
-| **Instagram** | ✅ Media ID `17853930315586602` |
+| **Timestamp** | `2026-02-14 10:29:16` |
+| **Tweet ID** | `2022034439094817086` |
+| **Author** | @SeverusChud |
+| **YouTube** | [▶ Watch](https://youtu.be/vi3n0kNyWys) |
+| **Instagram** | ✅ Media ID `18082899665592740` |
 
 ---
 
@@ -48,4 +48,4 @@ _No recent errors._
 
 ---
 
-<sub>Last updated: 2026-02-14 08:34:57 UTC · Powered by GitHub Actions</sub>
+<sub>Last updated: 2026-02-14 10:29:16 UTC · Powered by GitHub Actions</sub>
