@@ -9,8 +9,8 @@
 | Metric | Value |
 |---|---|
 | **Status** | ⚪ **Idle** |
-| **Queue** | **15** video(s) waiting |
-| **Last Run** | `2026-02-14 14:28:53 UTC` |
+| **Queue** | **19** video(s) waiting |
+| **Last Run** | `2026-02-14 16:31:58 UTC` |
 
 ---
 
@@ -18,11 +18,11 @@
 
 | Field | Value |
 |---|---|
-| **Timestamp** | `2026-02-14 14:28:53` |
-| **Tweet ID** | `2022053739289620605` |
-| **Author** | @DrClownPhD |
+| **Timestamp** | `2026-02-14 16:31:58` |
+| **Tweet ID** | `2022407933774975215` |
+| **Author** | @Hyperblaxe |
 | **YouTube** | ❌ Failed |
-| **Instagram** | ✅ Media ID `18075796241622250` |
+| **Instagram** | ✅ Media ID `18091232515856521` |
 
 ---
 
@@ -48,4 +48,4 @@ _No recent errors._
 
 ---
 
-<sub>Last updated: 2026-02-14 14:28:53 UTC · Powered by GitHub Actions</sub>
+<sub>Last updated: 2026-02-14 16:31:58 UTC · Powered by GitHub Actions</sub>
