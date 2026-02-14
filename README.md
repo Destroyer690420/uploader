@@ -9,8 +9,8 @@
 | Metric | Value |
 |---|---|
 | **Status** | ⚪ **Idle** |
-| **Queue** | **15** video(s) waiting |
-| **Last Run** | `2026-02-14 02:06:43 UTC` |
+| **Queue** | **19** video(s) waiting |
+| **Last Run** | `2026-02-14 05:09:42 UTC` |
 
 ---
 
@@ -18,11 +18,11 @@
 
 | Field | Value |
 |---|---|
-| **Timestamp** | `2026-02-14 02:06:43` |
-| **Tweet ID** | `2022230764822409216` |
-| **Author** | @ExtremeBlitz__ |
-| **YouTube** | [▶ Watch](https://youtu.be/koIfDZyArp0) |
-| **Instagram** | ✅ Media ID `18101188207699874` |
+| **Timestamp** | `2026-02-14 05:09:42` |
+| **Tweet ID** | `2022278422475759694` |
+| **Author** | @introvert_hu_ji |
+| **YouTube** | [▶ Watch](https://youtu.be/WYyI8CTWRLc) |
+| **Instagram** | ✅ Media ID `17918229660260901` |
 
 ---
 
@@ -48,4 +48,4 @@ _No recent errors._
 
 ---
 
-<sub>Last updated: 2026-02-14 02:06:43 UTC · Powered by GitHub Actions</sub>
+<sub>Last updated: 2026-02-14 05:09:42 UTC · Powered by GitHub Actions</sub>
