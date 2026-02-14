@@ -9,8 +9,8 @@
 | Metric | Value |
 |---|---|
 | **Status** | ⚪ **Idle** |
-| **Queue** | **19** video(s) waiting |
-| **Last Run** | `2026-02-14 05:09:42 UTC` |
+| **Queue** | **18** video(s) waiting |
+| **Last Run** | `2026-02-14 06:47:32 UTC` |
 
 ---
 
@@ -18,11 +18,11 @@
 
 | Field | Value |
 |---|---|
-| **Timestamp** | `2026-02-14 05:09:42` |
-| **Tweet ID** | `2022278422475759694` |
-| **Author** | @introvert_hu_ji |
-| **YouTube** | [▶ Watch](https://youtu.be/WYyI8CTWRLc) |
-| **Instagram** | ✅ Media ID `17918229660260901` |
+| **Timestamp** | `2026-02-14 06:47:32` |
+| **Tweet ID** | `2022251150427512909` |
+| **Author** | @_devJNS |
+| **YouTube** | [▶ Watch](https://youtu.be/MAG5JJnvxo4) |
+| **Instagram** | ✅ Media ID `17937019977012004` |
 
 ---
 
@@ -48,4 +48,4 @@ _No recent errors._
 
 ---
 
-<sub>Last updated: 2026-02-14 05:09:42 UTC · Powered by GitHub Actions</sub>
+<sub>Last updated: 2026-02-14 06:47:32 UTC · Powered by GitHub Actions</sub>
