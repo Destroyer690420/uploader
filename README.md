@@ -9,8 +9,8 @@
 | Metric | Value |
 |---|---|
 | **Status** | ⚪ **Idle** |
-| **Queue** | **19** video(s) waiting |
-| **Last Run** | `2026-02-14 16:31:58 UTC` |
+| **Queue** | **18** video(s) waiting |
+| **Last Run** | `2026-02-14 18:37:27 UTC` |
 
 ---
 
@@ -18,11 +18,11 @@
 
 | Field | Value |
 |---|---|
-| **Timestamp** | `2026-02-14 16:31:58` |
-| **Tweet ID** | `2022407933774975215` |
-| **Author** | @Hyperblaxe |
+| **Timestamp** | `2026-02-14 18:37:27` |
+| **Tweet ID** | `2022634319899169135` |
+| **Author** | @dictator_jii |
 | **YouTube** | ❌ Failed |
-| **Instagram** | ✅ Media ID `18091232515856521` |
+| **Instagram** | ✅ Media ID `18074193926453278` |
 
 ---
 
@@ -48,4 +48,4 @@ _No recent errors._
 
 ---
 
-<sub>Last updated: 2026-02-14 16:31:58 UTC · Powered by GitHub Actions</sub>
+<sub>Last updated: 2026-02-14 18:37:27 UTC · Powered by GitHub Actions</sub>
