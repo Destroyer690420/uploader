@@ -9,8 +9,8 @@
 | Metric | Value |
 |---|---|
 | **Status** | ⚪ **Idle** |
-| **Queue** | **16** video(s) waiting |
-| **Last Run** | `2026-02-14 12:52:09 UTC` |
+| **Queue** | **15** video(s) waiting |
+| **Last Run** | `2026-02-14 14:28:53 UTC` |
 
 ---
 
@@ -18,11 +18,11 @@
 
 | Field | Value |
 |---|---|
-| **Timestamp** | `2026-02-14 12:52:09` |
-| **Tweet ID** | `2022298156877353104` |
-| **Author** | @We__Homosapiens |
-| **YouTube** | [▶ Watch](https://youtu.be/YFzmcdqWIXo) |
-| **Instagram** | ✅ Media ID `18091155559844155` |
+| **Timestamp** | `2026-02-14 14:28:53` |
+| **Tweet ID** | `2022053739289620605` |
+| **Author** | @DrClownPhD |
+| **YouTube** | ❌ Failed |
+| **Instagram** | ✅ Media ID `18075796241622250` |
 
 ---
 
@@ -48,4 +48,4 @@ _No recent errors._
 
 ---
 
-<sub>Last updated: 2026-02-14 12:52:09 UTC · Powered by GitHub Actions</sub>
+<sub>Last updated: 2026-02-14 14:28:53 UTC · Powered by GitHub Actions</sub>
