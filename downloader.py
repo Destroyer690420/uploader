@@ -117,6 +117,71 @@ def _find_downloaded_file(output_dir: str, tweet_id: str) -> str | None:
 
 
 # ===================================================================
+# 1a. Download an Instagram Reel (via instagrapi)
+# ===================================================================
+
+def download_ig_reel(
+    media_pk: str,
+    ig_client=None,
+    output_dir: str = DEFAULT_DOWNLOAD_DIR,
+) -> str | None:
+    """
+    Downloads an Instagram Reel by its media_pk using instagrapi.
+
+    Args:
+        media_pk:   The media primary key (from ig_scraper).
+        ig_client:  Authenticated instagrapi.Client instance.
+                    If None, creates one from IG_SESSION_JSON env var.
+        output_dir: Directory to save into (created if it doesn't exist).
+
+    Returns:
+        Absolute path to the downloaded .mp4 file, or None on failure.
+    """
+    os.makedirs(output_dir, exist_ok=True)
+
+    if ig_client is None:
+        try:
+            from ig_scraper import get_client
+            ig_client = get_client()
+        except ImportError:
+            logger.error("ig_scraper module not found.")
+            return None
+        if ig_client is None:
+            logger.error("❌ Could not authenticate Instagram client.")
+            return None
+
+    try:
+        # Download the Reel clip
+        logger.info("⬇️  Downloading IG Reel media_pk=%s ...", media_pk)
+        downloaded_path = ig_client.clip_download(int(media_pk))
+
+        if not downloaded_path or not os.path.exists(str(downloaded_path)):
+            logger.error("❌ clip_download returned no file for media_pk=%s", media_pk)
+            return None
+
+        downloaded_path = str(downloaded_path)
+
+        # Move to our temp_videos dir with a consistent name
+        target_name = f"ig_{media_pk}.mp4"
+        target_path = os.path.join(output_dir, target_name)
+
+        shutil.move(downloaded_path, target_path)
+
+        size_mb = os.path.getsize(target_path) / (1024 * 1024)
+        logger.info(
+            "✅ Downloaded IG Reel %s — %.1f MB → %s",
+            media_pk, size_mb, target_path,
+        )
+        return target_path
+
+    except Exception as e:
+        logger.error(
+            "⚠️  Error downloading IG Reel media_pk=%s: %s", media_pk, e
+        )
+        return None
+
+
+# ===================================================================
 # 1b. Convert video to 9:16 vertical (for YouTube Shorts)
 # ===================================================================
 

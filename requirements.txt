@@ -2,3 +2,5 @@ twikit
 yt-dlp
 requests
 python-dotenv
+instagrapi
+instaloader

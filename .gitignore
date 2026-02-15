@@ -38,6 +38,8 @@ temp_videos/
 
 # Secrets & auth
 public/cookies.json
+ig_session.json
+public/session.json
 
 # Daily counter (tracked in Actions via git commit)
 yt_daily_count.txt

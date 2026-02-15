@@ -2,11 +2,11 @@ name: 🤖 Auto-Post Pipeline
 
 on:
   schedule:
-    - cron: '0 */2 * * *'   # Every 2 hours
-  workflow_dispatch:          # Manual trigger for testing
+    - cron: '0 * * * *'        # Every hour
+  workflow_dispatch:             # Manual trigger for testing
 
 permissions:
-  contents: write             # Needed to push processed_ids.txt & README.md
+  contents: write                # Needed to push processed_ids.txt & README.md
 
 jobs:
   post-video:
@@ -20,7 +20,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       # ── Set up Python ──
-      - name: 🐍 Set up Python 3.9
+      - name: 🐍 Set up Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -29,11 +29,19 @@ jobs:
       - name: 📦 Install dependencies
         run: pip install -r requirements.txt
 
-      # ── Recreate cookies.json from secret ──
-      - name: 🍪 Write cookies.json
+      # ── Install ffmpeg (needed for video conversion) ──
+      - name: 🎬 Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      # ── Recreate cookie files from secrets ──
+      - name: 🍪 Write cookies.json (X/Twitter)
         run: |
           mkdir -p public
           echo '${{ secrets.COOKIES_JSON }}' > public/cookies.json
+
+      - name: 🍪 Write ig_cookies.json (Instagram)
+        run: |
+          echo '${{ secrets.IG_COOKIES_JSON }}' > public/ig_cookies.json
 
       # ── Run the pipeline ──
       - name: 🚀 Run pipeline
@@ -42,7 +50,7 @@ jobs:
           YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
           YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
           YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
-          # Instagram Graph API
+          # Instagram Graph API (for uploading Reels)
           IG_USER_ID: ${{ secrets.IG_USER_ID }}
           IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
         run: python main.py

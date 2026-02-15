@@ -409,11 +409,8 @@ def upload_video(
     # --- Instagram (uses local file via resumable upload) ---
     if upload_instagram:
         if local_path and os.path.exists(local_path):
-            ig_caption = (
-                "#reels #viral #fyp #foryou #funny #trending "
-                "#explore #memes #comedy #lol #relatable "
-                "#viralreels #foryoupage #funnyvideos #trend"
-            )
+            # Use the ORIGINAL caption from the source Reel
+            ig_caption = raw_text.strip() if raw_text.strip() else caption
             result["instagram_id"] = upload_to_instagram(
                 filepath=local_path,
                 caption=ig_caption,

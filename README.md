@@ -1,6 +1,6 @@
 # 🤖 Auto-Post Pipeline
 
-> Automated Bookmark → YouTube + Instagram pipeline powered by GitHub Actions.
+> Automated multi-source → YouTube + Instagram pipeline powered by GitHub Actions.
 
 ---
 
@@ -9,8 +9,8 @@
 | Metric | Value |
 |---|---|
 | **Status** | ⚪ **Idle** |
-| **Queue** | **17** video(s) waiting |
-| **Last Run** | `2026-02-15 02:25:02 UTC` |
+| **Queue** | **0** video(s) waiting |
+| **Last Run** | `2026-02-15 09:58:53 UTC` |
 
 ---
 
@@ -18,11 +18,12 @@
 
 | Field | Value |
 |---|---|
-| **Timestamp** | `2026-02-15 02:25:02` |
-| **Tweet ID** | `2022565736313663549` |
-| **Author** | @iiamkrshn |
+| **Timestamp** | `2026-02-15 09:58:53` |
+| **Source** | `IG DM` |
+| **ID** | `ig_3823910365072393976` |
+| **Author** | @lonelly.fanss (via IG DM) |
 | **YouTube** | ❌ Failed |
-| **Instagram** | ✅ Media ID `18054915278426187` |
+| **Instagram** | ✅ Media ID `18329852065169762` |
 
 ---
 
@@ -34,18 +35,21 @@ _No recent errors._
 
 ## ⚙️ How It Works
 
-1. **Scrapes** X bookmarks for new videos every 2 hours
-2. **Downloads** the oldest unprocessed video via `yt-dlp`
-3. **Uploads** to YouTube (unlisted) + Instagram (Reel)
-4. **Updates** this dashboard automatically
+1. **Checks** Instagram DMs for shared Reels (priority source)
+2. **Falls back** to X bookmarks for new videos
+3. **Downloads** the video (instagrapi / yt-dlp)
+4. **Converts** to 9:16 vertical format
+5. **Uploads** to YouTube (unlisted) + Instagram (Reel)
+6. **Updates** this dashboard automatically
 
 | Module | Purpose |
 |---|---|
+| `ig_scraper.py` | Monitor IG DMs for shared Reels |
 | `scraper.py` | Fetch X bookmarks, extract video URLs |
-| `downloader.py` | Download videos via yt-dlp |
+| `downloader.py` | Download videos (yt-dlp + instagrapi) |
 | `uploader.py` | Upload to YouTube + Instagram |
-| `main.py` | Single-cycle orchestrator |
+| `main.py` | Multi-source orchestrator |
 
 ---
 
-<sub>Last updated: 2026-02-15 02:25:02 UTC · Powered by GitHub Actions</sub>
+<sub>Last updated: 2026-02-15 09:58:53 UTC · Powered by GitHub Actions</sub>

@@ -1,15 +1,19 @@
 """
-main.py — Single-Cycle Pipeline Orchestrator
+main.py — Multi-Source Pipeline Orchestrator
 
 Designed for GitHub Actions: performs exactly ONE upload cycle and exits.
 No time.sleep() — the cron schedule handles spacing between runs.
 
+Sources (checked in order):
+  1. Instagram DMs — shared Reels on the worker account
+  2. X Bookmarks — bookmarked video tweets
+
 Flow:
-  1. Scrape bookmarks (auto_save=False so we control state)
-  2. Pick the single OLDEST unprocessed video
-  3. Download → Upload (YouTube + Instagram) → Cleanup
-  4. Save ID to processed_ids.txt ONLY after successful upload
-  5. Generate README.md dashboard
+  1. Check IG DMs for a shared Reel (source priority)
+  2. If no Reel, scrape X bookmarks for new videos
+  3. Pick a single video (oldest for X, latest for IG)
+  4. Download → Convert to vertical → Upload (YouTube + Instagram) → Cleanup
+  5. Save state + Generate README dashboard
   6. Exit
 
 Usage:
@@ -23,8 +27,13 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+# Fix Windows console encoding for emoji/unicode
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 from scraper import fetch_bookmarked_videos, save_processed_id
-from downloader import download_video, cleanup_video, convert_to_vertical
+from downloader import download_video, download_ig_reel, cleanup_video, convert_to_vertical
 from uploader import upload_video
 
 # ---------------------------------------------------------------------------
@@ -98,6 +107,72 @@ def _yt_limit_reached() -> bool:
 
 
 # ===================================================================
+# Instagram DM Source — check for shared Reels
+# ===================================================================
+
+def _try_ig_dm_source() -> dict | None:
+    """
+    Attempts to find a Reel shared via Instagram DMs.
+
+    Returns:
+        A dict with keys: source, media_pk, caption, local_path
+        or None if no Reel found or IG is not configured.
+    """
+    ig_cookies_path = str(BASE_DIR / "public" / "ig_cookies.json")
+    if not os.path.exists(ig_cookies_path):
+        logger.info("[Source: IG DM] ig_cookies.json not found — skipping IG source.")
+        return None
+
+    try:
+        from ig_scraper import get_client, get_latest_dm_reel, download_reel_by_shortcode, mark_dm_seen
+    except ImportError as e:
+        logger.warning("[Source: IG DM] ig_scraper module not available: %s", e)
+        return None
+
+    logger.info("[Source: IG DM] Checking for shared Reels in DMs...")
+
+    session, loader = get_client()
+    if session is None:
+        logger.warning("[Source: IG DM] Authentication failed — skipping.")
+        return None
+
+    reel_info = get_latest_dm_reel(session)
+    if reel_info is None:
+        logger.info("[Source: IG DM] No Reels found in DMs.")
+        return None
+
+    shortcode = reel_info["shortcode"]
+    media_pk = reel_info["media_pk"]
+    caption = reel_info.get("caption", "")
+    sender = reel_info.get("sender", "unknown")
+
+    logger.info(
+        "[Source: IG DM] Found Reel! shortcode=%s from @%s",
+        shortcode, sender,
+    )
+
+    # Download the Reel using instaloader
+    local_path = download_reel_by_shortcode(loader, shortcode)
+    if not local_path:
+        logger.error("[Source: IG DM] Download failed for shortcode=%s", shortcode)
+        return None
+
+    return {
+        "source": "IG DM",
+        "media_pk": media_pk,
+        "tweet_id": f"ig_{media_pk}",  # Unified ID for logging/dashboard
+        "tweet_text": caption,
+        "author": f"@{sender} (via IG DM)",
+        "video_url": "",
+        "local_path": local_path,
+        # For mark-as-seen after successful upload
+        "_ig_session": session,
+        "_ig_thread_id": reel_info.get("thread_id", ""),
+        "_ig_item_id": reel_info.get("item_id", ""),
+    }
+
+
+# ===================================================================
 # README Dashboard Generator
 # ===================================================================
 
@@ -110,6 +185,7 @@ def generate_dashboard(
     last_ig_id: str | None = None,
     last_timestamp: str | None = None,
     error_message: str | None = None,
+    source: str = "X",
 ) -> None:
     """
     Rewrites README.md as a live dashboard showing pipeline status.
@@ -129,7 +205,8 @@ def generate_dashboard(
         last_action = f"""| Field | Value |
 |---|---|
 | **Timestamp** | `{ts}` |
-| **Tweet ID** | `{last_tweet_id}` |
+| **Source** | `{source}` |
+| **ID** | `{last_tweet_id}` |
 | **Author** | {last_author or 'N/A'} |
 | **YouTube** | {f'[▶ Watch](https://youtu.be/{last_yt_id})' if last_yt_id else '❌ Failed'} |
 | **Instagram** | {f'✅ Media ID `{last_ig_id}`' if last_ig_id else '❌ Failed'} |"""
@@ -148,7 +225,7 @@ def generate_dashboard(
 
     readme = f"""# 🤖 Auto-Post Pipeline
 
-> Automated Bookmark → YouTube + Instagram pipeline powered by GitHub Actions.
+> Automated multi-source → YouTube + Instagram pipeline powered by GitHub Actions.
 
 ---
 
@@ -176,17 +253,20 @@ def generate_dashboard(
 
 ## ⚙️ How It Works
 
-1. **Scrapes** X bookmarks for new videos every 2 hours
-2. **Downloads** the oldest unprocessed video via `yt-dlp`
-3. **Uploads** to YouTube (unlisted) + Instagram (Reel)
-4. **Updates** this dashboard automatically
+1. **Checks** Instagram DMs for shared Reels (priority source)
+2. **Falls back** to X bookmarks for new videos
+3. **Downloads** the video (instagrapi / yt-dlp)
+4. **Converts** to 9:16 vertical format
+5. **Uploads** to YouTube (unlisted) + Instagram (Reel)
+6. **Updates** this dashboard automatically
 
 | Module | Purpose |
 |---|---|
+| `ig_scraper.py` | Monitor IG DMs for shared Reels |
 | `scraper.py` | Fetch X bookmarks, extract video URLs |
-| `downloader.py` | Download videos via yt-dlp |
+| `downloader.py` | Download videos (yt-dlp + instagrapi) |
 | `uploader.py` | Upload to YouTube + Instagram |
-| `main.py` | Single-cycle orchestrator |
+| `main.py` | Multi-source orchestrator |
 
 ---
 
@@ -206,94 +286,116 @@ def generate_dashboard(
 async def run_pipeline() -> None:
     """
     Executes a single upload cycle:
-      1. Scrape → 2. Pick oldest → 3. Download → 4. Upload → 5. Cleanup
-      6. Generate README dashboard
+      1. Check IG DMs → 2. Fallback to X Bookmarks
+      3. Download → 4. Convert → 5. Upload → 6. Cleanup
+      7. Generate README dashboard
     """
     print("\n" + "=" * 65)
     print(f"  🚀 PIPELINE START — {timestamp()}")
     print("=" * 65)
 
     error_msg = None
+    source = "X"
+    target = None
+    remaining = 0
 
     # ------------------------------------------------------------------
-    # STEP 1: Scrape bookmarks (don't auto-save video IDs)
+    # STEP 1: Try Instagram DMs first (priority source)
     # ------------------------------------------------------------------
-    logger.info("[%s] STEP 1 — Scraping bookmarks...", timestamp())
+    logger.info("[%s] STEP 1 — Checking Instagram DMs...", timestamp())
 
-    try:
-        all_videos = await fetch_bookmarked_videos(auto_save=False)
-    except Exception as e:
-        error_msg = f"Fatal scraper error: {e}"
-        logger.error(error_msg)
-        generate_dashboard(status="Error", error_message=error_msg)
-        sys.exit(1)
+    ig_result = _try_ig_dm_source()
 
-    if not all_videos:
-        logger.info("No new bookmarks found. Exiting gracefully.")
-        print(f"\n  ✅ No new videos to process. Pipeline complete at {timestamp()}")
-        print(f"  📊 Queue: 0 videos remaining.\n")
-        generate_dashboard(status="Idle", queue_remaining=0)
-        return
-
-    logger.info(
-        "[%s] Scraper found %d unprocessed video(s).",
-        timestamp(), len(all_videos),
-    )
-
-    # ------------------------------------------------------------------
-    # STEP 2: Pick the OLDEST unprocessed video (last in list = oldest bookmark)
-    # ------------------------------------------------------------------
-    target = all_videos[-1]  # bookmarks are newest-first, so last = oldest
-    remaining = len(all_videos) - 1
-
-    logger.info(
-        "[%s] STEP 2 — Selected oldest video: tweet %s by %s",
-        timestamp(), target["tweet_id"], target["author"],
-    )
-
-    # ------------------------------------------------------------------
-    # STEP 3: Download
-    # ------------------------------------------------------------------
-    logger.info("[%s] STEP 3 — Downloading video...", timestamp())
-
-    local_path = None
-    try:
-        local_path = download_video(target["video_url"], target["tweet_id"])
-    except Exception as e:
-        error_msg = f"Download failed for tweet {target['tweet_id']}: {e}"
-        logger.error(error_msg)
-
-    if not local_path:
-        error_msg = error_msg or f"Download returned None for tweet {target['tweet_id']}"
-        logger.error(
-            "❌ Download failed for tweet %s. "
-            "ID NOT saved — will retry next run.",
-            target["tweet_id"],
+    if ig_result:
+        source = "IG DM"
+        target = ig_result
+        logger.info(
+            "[%s] [Source: IG DM] Using Reel %s from %s",
+            timestamp(), target["media_pk"], target["author"],
         )
-        _print_summary(success=False, remaining=remaining + 1, target=target)
-        generate_dashboard(
-            status="Error",
-            queue_remaining=remaining + 1,
-            last_tweet_id=target["tweet_id"],
-            last_author=target.get("author"),
-            last_timestamp=timestamp(),
-            error_message=error_msg,
+
+    # ------------------------------------------------------------------
+    # STEP 2: Fallback to X Bookmarks if no IG Reel
+    # ------------------------------------------------------------------
+    if target is None:
+        logger.info("[%s] STEP 2 — No IG Reel found. Scraping X bookmarks...", timestamp())
+
+        try:
+            all_videos = await fetch_bookmarked_videos(auto_save=False)
+        except Exception as e:
+            error_msg = f"Fatal scraper error: {e}"
+            logger.error(error_msg)
+            generate_dashboard(status="Error", error_message=error_msg, source=source)
+            sys.exit(1)
+
+        if not all_videos:
+            logger.info("No new content from any source. Exiting gracefully.")
+            print(f"\n  ✅ No new videos to process. Pipeline complete at {timestamp()}")
+            print(f"  📊 Queue: 0 videos remaining.\n")
+            generate_dashboard(status="Idle", queue_remaining=0, source=source)
+            return
+
+        logger.info(
+            "[%s] [Source: X] Scraper found %d unprocessed video(s).",
+            timestamp(), len(all_videos),
         )
-        return
+
+        # Pick the OLDEST unprocessed video
+        source = "X"
+        video = all_videos[-1]  # bookmarks are newest-first, so last = oldest
+        remaining = len(all_videos) - 1
+
+        logger.info(
+            "[%s] [Source: X] Selected oldest video: tweet %s by %s",
+            timestamp(), video["tweet_id"], video["author"],
+        )
+
+        # Download
+        logger.info("[%s] [Source: X] Downloading video...", timestamp())
+        local_path = None
+        try:
+            local_path = download_video(video["video_url"], video["tweet_id"])
+        except Exception as e:
+            error_msg = f"[Source: X] Download failed for tweet {video['tweet_id']}: {e}"
+            logger.error(error_msg)
+
+        if not local_path:
+            error_msg = error_msg or f"[Source: X] Download returned None for tweet {video['tweet_id']}"
+            logger.error(
+                "❌ [Source: X] Download failed for tweet %s. "
+                "ID NOT saved — will retry next run.",
+                video["tweet_id"],
+            )
+            _print_summary(success=False, remaining=remaining + 1, target=video, source=source)
+            generate_dashboard(
+                status="Error",
+                queue_remaining=remaining + 1,
+                last_tweet_id=video["tweet_id"],
+                last_author=video.get("author"),
+                last_timestamp=timestamp(),
+                error_message=error_msg,
+                source=source,
+            )
+            return
+
+        target = {**video, "local_path": local_path}
+
+    local_path = target["local_path"]
 
     file_size_mb = os.path.getsize(local_path) / (1024 * 1024)
     logger.info(
-        "[%s] Download complete — %.1f MB at %s",
-        timestamp(), file_size_mb, local_path,
+        "[%s] [Source: %s] Download complete — %.1f MB at %s",
+        timestamp(), source, file_size_mb, local_path,
     )
 
     # ------------------------------------------------------------------
-    # STEP 3b: Convert to 9:16 vertical (for YouTube Shorts)
+    # STEP 3: Convert to 9:16 vertical (for YouTube Shorts)
     # ------------------------------------------------------------------
-    logger.info("[%s] STEP 3b — Converting to 9:16 vertical...", timestamp())
+    logger.info("[%s] [Source: %s] STEP 3 — Converting to 9:16 vertical...", timestamp(), source)
     vertical_path = convert_to_vertical(local_path)
     if vertical_path:
         local_path = vertical_path
+        target["local_path"] = local_path
         logger.info("[%s] Conversion complete → %s", timestamp(), local_path)
     else:
         logger.warning("Conversion failed — uploading original file instead.")
@@ -301,10 +403,9 @@ async def run_pipeline() -> None:
     # ------------------------------------------------------------------
     # STEP 4: Upload to YouTube + Instagram
     # ------------------------------------------------------------------
-    # Check YouTube daily limit
     yt_allowed = not _yt_limit_reached()
 
-    logger.info("[%s] STEP 4 — Uploading to platforms...", timestamp())
+    logger.info("[%s] [Source: %s] STEP 4 — Uploading to platforms...", timestamp(), source)
 
     try:
         result = upload_video(
@@ -313,9 +414,9 @@ async def run_pipeline() -> None:
             upload_instagram=True,
         )
     except Exception as e:
-        error_msg = f"Upload crashed for tweet {target['tweet_id']}: {e}"
+        error_msg = f"[Source: {source}] Upload crashed for {target['tweet_id']}: {e}"
         logger.error(error_msg)
-        _print_summary(success=False, remaining=remaining + 1, target=target)
+        _print_summary(success=False, remaining=remaining + 1, target=target, source=source)
         if local_path:
             cleanup_video(local_path)
         generate_dashboard(
@@ -325,6 +426,7 @@ async def run_pipeline() -> None:
             last_author=target.get("author"),
             last_timestamp=timestamp(),
             error_message=error_msg,
+            source=source,
         )
         return
 
@@ -339,8 +441,8 @@ async def run_pipeline() -> None:
         _increment_yt_daily_count()
 
     logger.info(
-        "[%s] Upload results — YouTube: %s | Instagram: %s",
-        timestamp(),
+        "[%s] [Source: %s] Upload results — YouTube: %s | Instagram: %s",
+        timestamp(), source,
         f"✅ {yt_id}" if yt_ok else "❌ Failed",
         f"✅ {ig_id}" if ig_ok else "❌ Failed",
     )
@@ -348,7 +450,7 @@ async def run_pipeline() -> None:
     # ------------------------------------------------------------------
     # STEP 5: Cleanup + State Update
     # ------------------------------------------------------------------
-    logger.info("[%s] STEP 5 — Cleanup & state update...", timestamp())
+    logger.info("[%s] [Source: %s] STEP 5 — Cleanup & state update...", timestamp(), source)
 
     # Clean up local file IMMEDIATELY after uploads
     if local_path:
@@ -356,13 +458,24 @@ async def run_pipeline() -> None:
 
     # Only save ID if AT LEAST ONE upload succeeded
     if yt_ok or ig_ok:
-        save_processed_id(target["tweet_id"])
-        logger.info(
-            "✅ Tweet %s marked as processed.", target["tweet_id"]
-        )
+        if source == "X":
+            # For X bookmarks, save to processed_ids.txt
+            save_processed_id(target["tweet_id"])
+            logger.info("✅ [Source: X] Tweet %s marked as processed.", target["tweet_id"])
+        else:
+            # For IG DMs: mark as seen via API + save to processed_ids.txt
+            ig_session = target.get("_ig_session")
+            thread_id = target.get("_ig_thread_id", "")
+            item_id = target.get("_ig_item_id", "")
+            if ig_session and thread_id and item_id:
+                from ig_scraper import mark_dm_seen
+                mark_dm_seen(ig_session, thread_id, item_id)
+            # Save to processed_ids.txt as backup dedup layer
+            save_processed_id(target["tweet_id"])
+            logger.info("✅ [Source: IG DM] Reel %s processed (seen + saved to processed_ids).", target["tweet_id"])
     else:
         error_msg = (
-            f"BOTH uploads failed for tweet {target['tweet_id']}. "
+            f"[Source: {source}] BOTH uploads failed for {target['tweet_id']}. "
             "Will retry next run."
         )
         logger.warning("⚠️  %s", error_msg)
@@ -374,6 +487,7 @@ async def run_pipeline() -> None:
         target=target,
         yt_id=yt_id,
         ig_id=ig_id,
+        source=source,
     )
 
     # ------------------------------------------------------------------
@@ -388,6 +502,7 @@ async def run_pipeline() -> None:
         last_ig_id=ig_id,
         last_timestamp=timestamp(),
         error_message=error_msg,
+        source=source,
     )
 
 
@@ -401,13 +516,15 @@ def _print_summary(
     target: dict,
     yt_id: str | None = None,
     ig_id: str | None = None,
+    source: str = "X",
 ) -> None:
     """Prints a clean end-of-run summary."""
     print(f"\n{'=' * 65}")
     print(f"  {'✅' if success else '❌'} PIPELINE {'COMPLETE' if success else 'FAILED'} — {timestamp()}")
     print(f"{'=' * 65}")
-    print(f"  Tweet ID : {target['tweet_id']}")
-    print(f"  Author   : {target['author']}")
+    print(f"  Source   : {source}")
+    print(f"  ID       : {target['tweet_id']}")
+    print(f"  Author   : {target.get('author', 'N/A')}")
     print(f"  Text     : {target.get('tweet_text', '')[:80]}...")
 
     if yt_id:
