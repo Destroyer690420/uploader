@@ -9,8 +9,8 @@
 | Metric | Value |
 |---|---|
 | **Status** | ⚪ **Idle** |
-| **Queue** | **18** video(s) waiting |
-| **Last Run** | `2026-02-14 22:25:36 UTC` |
+| **Queue** | **17** video(s) waiting |
+| **Last Run** | `2026-02-15 02:25:02 UTC` |
 
 ---
 
@@ -18,11 +18,11 @@
 
 | Field | Value |
 |---|---|
-| **Timestamp** | `2026-02-14 22:25:36` |
-| **Tweet ID** | `2022681240307208697` |
-| **Author** | @dictator_jii |
+| **Timestamp** | `2026-02-15 02:25:02` |
+| **Tweet ID** | `2022565736313663549` |
+| **Author** | @iiamkrshn |
 | **YouTube** | ❌ Failed |
-| **Instagram** | ✅ Media ID `18092074817005789` |
+| **Instagram** | ✅ Media ID `18054915278426187` |
 
 ---
 
@@ -48,4 +48,4 @@ _No recent errors._
 
 ---
 
-<sub>Last updated: 2026-02-14 22:25:36 UTC · Powered by GitHub Actions</sub>
+<sub>Last updated: 2026-02-15 02:25:02 UTC · Powered by GitHub Actions</sub>
