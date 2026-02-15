@@ -1,0 +1,16 @@
+    def get_saved_posts(self) -> NodeIterator[Post]:
+        """Get Posts that are marked as saved by the user.
+
+        :rtype: NodeIterator[Post]"""
+
+        if self.username != self._context.username:
+            raise LoginRequiredException(f"Login as {self.username} required to get that profile's saved posts.")
+
+        return NodeIterator(
+            self._context,
+            'f883d95537fbcd400f466f63d42bd8a1',
+            lambda d: d['data']['user']['edge_saved_media'],
+            lambda n: Post(self._context, n),
+            {'id': self.userid},
+            'https://www.instagram.com/{0}/'.format(self.username),
+        )

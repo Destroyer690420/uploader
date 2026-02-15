@@ -5,16 +5,17 @@ Designed for GitHub Actions: performs exactly ONE upload cycle and exits.
 No time.sleep() — the cron schedule handles spacing between runs.
 
 Sources (checked in order):
-  1. Instagram Saved — saved video posts (priority)
+  1. Discord Bridge — video links posted to a Discord channel (priority)
   2. X Bookmarks — bookmarked video tweets (fallback)
 
 Flow:
-  1. Check IG Saved posts for new videos
-  2. If no IG videos, scrape X bookmarks
-  3. Pick the single oldest unprocessed video
-  4. Download → Convert to vertical → Upload (YouTube + Instagram) → Cleanup
-  5. Save state + Generate README dashboard
-  6. Exit
+  1. Check Discord channel for video links
+  2. If no Discord links, scrape X bookmarks
+  3. Download the video (yt-dlp with cookies)
+  4. Convert to 9:16 vertical format
+  5. Upload to YouTube (unlisted) + Instagram (Reel)
+  6. Save state + Generate README dashboard
+  7. Exit
 
 Usage:
     python main.py
@@ -107,39 +108,37 @@ def _yt_limit_reached() -> bool:
 
 
 # ===================================================================
-# Instagram Saved Source — check for saved video posts
+# Discord Source — check for video links in Discord channel
 # ===================================================================
 
-def _try_ig_saved_source() -> list[dict]:
+def _try_discord_source() -> dict | None:
     """
-    Fetches saved video posts from Instagram.
-
-    Returns a list of dicts (same format as X bookmarks) or empty list.
+    Fetches one video link from the Discord channel.
+    Returns a dict or None.
     """
-    ig_cookies_path = str(BASE_DIR / "public" / "ig_cookies.json")
-    if not os.path.exists(ig_cookies_path):
-        logger.info("[Source: IG Saved] ig_cookies.json not found — skipping.")
-        return []
-
     try:
-        from ig_scraper import fetch_saved_videos
+        from discord_scraper import fetch_discord_links
     except ImportError as e:
-        logger.warning("[Source: IG Saved] ig_scraper module not available: %s", e)
-        return []
+        logger.warning("[Source: Discord] discord_scraper module not available: %s", e)
+        return None
 
-    logger.info("[Source: IG Saved] Checking saved posts...")
+    logger.info("[Source: Discord] Checking channel for video links...")
 
     try:
-        videos = fetch_saved_videos(limit=20)
+        result = fetch_discord_links()
     except Exception as e:
-        logger.error("[Source: IG Saved] Scraper error: %s", e)
-        return []
+        logger.error("[Source: Discord] Scraper error: %s", e)
+        return None
 
-    logger.info(
-        "[Source: IG Saved] Found %d new saved video(s).",
-        len(videos),
-    )
-    return videos
+    if result:
+        logger.info(
+            "[Source: Discord] Found link: %s (%s)",
+            result["video_url"], result["source"],
+        )
+    else:
+        logger.info("[Source: Discord] No video links found.")
+
+    return result
 
 
 # ===================================================================
@@ -155,7 +154,7 @@ def generate_dashboard(
     last_ig_id: str | None = None,
     last_timestamp: str | None = None,
     error_message: str | None = None,
-    source: str = "X",
+    source: str = "Discord",
 ) -> None:
     """
     Rewrites README.md as a live dashboard showing pipeline status.
@@ -223,18 +222,18 @@ def generate_dashboard(
 
 ## ⚙️ How It Works
 
-1. **Checks** Instagram Saved posts for new videos (priority source)
+1. **Checks** Discord channel for video links (priority source)
 2. **Falls back** to X bookmarks for new video tweets
-3. **Downloads** the video (yt-dlp)
+3. **Downloads** the video (yt-dlp with cookies)
 4. **Converts** to 9:16 vertical format
 5. **Uploads** to YouTube (unlisted) + Instagram (Reel)
 6. **Updates** this dashboard automatically
 
 | Module | Purpose |
 |---|---|
+| `discord_scraper.py` | Fetch video links from Discord channel |
 | `scraper.py` | Fetch X bookmarks, extract video URLs |
-| `ig_scraper.py` | Fetch IG Saved posts (instaloader) |
-| `downloader.py` | Download videos (yt-dlp) |
+| `downloader.py` | Download videos (yt-dlp + cookies) |
 | `uploader.py` | Upload to YouTube + Instagram |
 | `main.py` | Multi-source orchestrator |
 
@@ -256,7 +255,7 @@ def generate_dashboard(
 async def run_pipeline() -> None:
     """
     Executes a single upload cycle:
-      1. Check IG Saved → 2. Fallback to X Bookmarks
+      1. Check Discord → 2. Fallback to X Bookmarks
       3. Download → 4. Convert → 5. Upload → 6. Cleanup
       7. Generate README dashboard
     """
@@ -265,28 +264,29 @@ async def run_pipeline() -> None:
     print("=" * 65)
 
     error_msg = None
-    source = "IG Saved"
+    source = "Discord"
     target = None
     remaining = 0
-    all_videos = []
+    video = None
 
     # ------------------------------------------------------------------
-    # STEP 1: Try Instagram Saved posts first (priority source)
+    # STEP 1: Try Discord channel first (priority source)
     # ------------------------------------------------------------------
-    logger.info("[%s] STEP 1 — Checking IG Saved posts...", timestamp())
-    all_videos = _try_ig_saved_source()
+    logger.info("[%s] STEP 1 — Checking Discord channel...", timestamp())
+    discord_result = _try_discord_source()
 
-    if all_videos:
-        source = "IG Saved"
+    if discord_result:
+        video = discord_result
+        source = discord_result.get("source", "Discord")
         logger.info(
-            "[%s] [Source: IG Saved] Found %d new saved video(s).",
-            timestamp(), len(all_videos),
+            "[%s] [Source: Discord/%s] Found video link: %s",
+            timestamp(), source, video["video_url"],
         )
     else:
         # ------------------------------------------------------------------
         # STEP 2: Fallback to X Bookmarks
         # ------------------------------------------------------------------
-        logger.info("[%s] STEP 2 — No IG videos. Scraping X bookmarks...", timestamp())
+        logger.info("[%s] STEP 2 — No Discord links. Scraping X bookmarks...", timestamp())
 
         try:
             all_videos = await fetch_bookmarked_videos(auto_save=False)
@@ -296,30 +296,26 @@ async def run_pipeline() -> None:
 
         if all_videos:
             source = "X"
+            video = all_videos[-1]  # oldest unprocessed
+            remaining = len(all_videos) - 1
             logger.info(
-                "[%s] [Source: X] Found %d unprocessed video(s).",
-                timestamp(), len(all_videos),
+                "[%s] [Source: X] Found %d unprocessed video(s). Selected: %s",
+                timestamp(), len(all_videos), video["tweet_id"],
             )
 
     # ------------------------------------------------------------------
     # No content from either source
     # ------------------------------------------------------------------
-    if not all_videos:
+    if not video:
         logger.info("No new content from any source. Exiting gracefully.")
         print(f"\n  ✅ No new videos to process. Pipeline complete at {timestamp()}")
         print(f"  📊 Queue: 0 videos remaining.\n")
         generate_dashboard(status="Idle", queue_remaining=0, source=source)
         return
 
-    # ------------------------------------------------------------------
-    # Pick the OLDEST unprocessed video (last in the list)
-    # ------------------------------------------------------------------
-    video = all_videos[-1]  # both sources return newest-first, so last = oldest
-    remaining = len(all_videos) - 1
-
     logger.info(
-        "[%s] [Source: %s] Selected oldest video: %s by %s",
-        timestamp(), source, video["tweet_id"], video["author"],
+        "[%s] [Source: %s] Selected video: %s by %s",
+        timestamp(), source, video["tweet_id"], video.get("author", "N/A"),
     )
 
     # ------------------------------------------------------------------
@@ -477,7 +473,7 @@ def _print_summary(
     target: dict,
     yt_id: str | None = None,
     ig_id: str | None = None,
-    source: str = "X",
+    source: str = "Discord",
 ) -> None:
     """Prints a clean end-of-run summary."""
     print(f"\n{'=' * 65}")

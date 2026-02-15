@@ -2,8 +2,8 @@
 ig_scraper.py — Instagram Saved Posts Scraper
 
 Fetches saved video posts using instaloader with cookie auth.
-Avoids rate limits by NOT calling Profile.from_username() — instead
-constructs a lazy Profile object directly from the ds_user_id cookie.
+Avoids rate limits by constructing a lazy Profile object from
+the ds_user_id cookie instead of calling Profile.from_username().
 
 Auth:
     Loads browser cookies from public/ig_cookies.json
@@ -57,7 +57,6 @@ def _load_cookies() -> tuple[dict, str]:
     with open(IG_COOKIES_PATH, "r", encoding="utf-8") as f:
         raw_cookies = json.load(f)
 
-    # Build a {name: value} dict for injection
     cookies_dict = {}
     ds_user_id = None
 
@@ -107,9 +106,6 @@ def fetch_saved_videos(limit: int = 20) -> list[dict]:
     Fetches saved posts from Instagram, filters for videos,
     and returns unprocessed ones in a standardized format.
 
-    Uses a lazy Profile construction to avoid the web_profile_info
-    API call that triggers 429 rate limits.
-
     Args:
         limit: Maximum number of saved posts to scan.
 
@@ -117,7 +113,7 @@ def fetch_saved_videos(limit: int = 20) -> list[dict]:
         List of dicts (newest-first, caller picks oldest):
         [
             {
-                "tweet_id":   "SHORTCODE",
+                "tweet_id":   "ig_MEDIAID",
                 "video_url":  "https://...",
                 "tweet_text": "caption...",
                 "author":     "@username",
@@ -133,7 +129,7 @@ def fetch_saved_videos(limit: int = 20) -> list[dict]:
         logger.error("[IG Scraper] %s", e)
         return []
 
-    # --- Step 2: Initialize instaloader with custom User-Agent ---
+    # --- Step 2: Initialize instaloader ---
     L = instaloader.Instaloader(
         download_comments=False,
         download_geotags=False,
@@ -144,7 +140,7 @@ def fetch_saved_videos(limit: int = 20) -> list[dict]:
         user_agent=WEB_USER_AGENT,
     )
 
-    # --- Step 3: Inject cookies into instaloader's session ---
+    # --- Step 3: Inject cookies ---
     for name, value in cookies_dict.items():
         L.context._session.cookies.set(
             name, value,
@@ -152,7 +148,13 @@ def fetch_saved_videos(limit: int = 20) -> list[dict]:
             path="/",
         )
 
-    # --- Step 4: Verify auth via test_login() ---
+    # --- Step 4: CRITICAL — Force-set internal auth state ---
+    # Cookie injection alone does NOT update instaloader's internal
+    # context. Without these, get_saved_posts() raises LoginRequired.
+    L.context._is_logged_in = True
+    L.context._user_id = int(ds_user_id)
+
+    # --- Step 5: Verify auth + get username ---
     try:
         username = L.test_login()
     except Exception as e:
@@ -166,22 +168,23 @@ def fetch_saved_videos(limit: int = 20) -> list[dict]:
         )
         return []
 
+    # CRITICAL: get_saved_posts() checks (profile.username == context.username).
+    # Setting _username does NOT work — must assign to the property directly.
+    L.context.username = username
+
     logger.info("[IG Scraper] Authenticated as @%s (id=%s)", username, ds_user_id)
 
-    # --- Step 5: Construct lazy Profile (NO web_profile_info call) ---
-    # This avoids the extra API request that triggers 429 rate limits.
-    # We feed instaloader a minimal node dict with the username and id
-    # we already have from cookies + test_login().
+    # --- Step 6: Construct lazy Profile (NO web_profile_info call) ---
     try:
         profile = instaloader.Profile(
             L.context,
-            {"username": username, "id": ds_user_id},
+            {"username": username, "id": int(ds_user_id)},
         )
     except Exception as e:
         logger.error("[IG Scraper] Failed to construct Profile: %s", e)
         return []
 
-    # --- Step 6: Fetch saved posts ---
+    # --- Step 7: Fetch saved posts ---
     try:
         logger.info("[IG Scraper] Fetching saved posts (limit=%d)...", limit)
         saved_posts = profile.get_saved_posts()
@@ -189,29 +192,40 @@ def fetch_saved_videos(limit: int = 20) -> list[dict]:
         logger.error("[IG Scraper] Failed to fetch saved posts: %s", e)
         return []
 
-    # --- Step 7: Iterate, filter, deduplicate ---
+    # --- Step 8: Iterate, filter, deduplicate ---
     processed_ids = _load_processed_ids()
     new_videos: list[dict] = []
 
     try:
         for post in islice(saved_posts, limit):
-            shortcode = post.shortcode
+            # Debug: log every post we scan
+            try:
+                media_id = post.mediaid
+            except Exception:
+                media_id = "unknown"
 
-            # Skip already-processed
-            if shortcode in processed_ids:
-                logger.debug("[IG Scraper] Skipping processed: %s", shortcode)
+            logger.info(
+                "[IG Scraper] 👀 Scanning: %s | is_video=%s | mediaid=%s",
+                post.shortcode, post.is_video, media_id,
+            )
+
+            # Dedup uses "ig_{mediaid}" format to match processed_ids.txt
+            post_id = f"ig_{media_id}"
+
+            if post_id in processed_ids:
+                logger.info("[IG Scraper] ⏭️  Already processed: %s", post_id)
                 continue
 
             # Filter: only videos
             if not post.is_video:
-                logger.debug("[IG Scraper] Skipping non-video: %s", shortcode)
+                logger.info("[IG Scraper] ⏭️  Not a video, skipping: %s", post.shortcode)
                 continue
 
             # Extract video URL
             try:
                 video_url = post.video_url
             except Exception:
-                video_url = f"https://www.instagram.com/reel/{shortcode}/"
+                video_url = f"https://www.instagram.com/reel/{post.shortcode}/"
 
             # Extract caption
             caption = ""
@@ -228,7 +242,7 @@ def fetch_saved_videos(limit: int = 20) -> list[dict]:
                 pass
 
             entry = {
-                "tweet_id": shortcode,
+                "tweet_id": post_id,  # "ig_{mediaid}" — matches processed_ids.txt format
                 "video_url": video_url,
                 "tweet_text": caption[:280] if caption else "",
                 "author": author,
@@ -236,8 +250,8 @@ def fetch_saved_videos(limit: int = 20) -> list[dict]:
             }
             new_videos.append(entry)
             logger.info(
-                "[IG Scraper] ✅ New saved video: %s by %s",
-                shortcode, author,
+                "[IG Scraper] ✅ New saved video: %s by %s (id=%s)",
+                post.shortcode, author, post_id,
             )
 
     except Exception as e:
