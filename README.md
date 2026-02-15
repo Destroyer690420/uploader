@@ -10,7 +10,7 @@
 |---|---|
 | **Status** | ⚪ **Idle** |
 | **Queue** | **0** video(s) waiting |
-| **Last Run** | `2026-02-15 05:56:04 UTC` |
+| **Last Run** | `2026-02-15 06:14:24 UTC` |
 
 ---
 
@@ -28,8 +28,8 @@ _No recent errors._
 
 ## ⚙️ How It Works
 
-1. **Checks** X bookmarks for new video tweets (priority source)
-2. **Falls back** to Instagram Saved posts for new videos
+1. **Checks** Instagram Saved posts for new videos (priority source)
+2. **Falls back** to X bookmarks for new video tweets
 3. **Downloads** the video (yt-dlp)
 4. **Converts** to 9:16 vertical format
 5. **Uploads** to YouTube (unlisted) + Instagram (Reel)
@@ -45,4 +45,4 @@ _No recent errors._
 
 ---
 
-<sub>Last updated: 2026-02-15 05:56:04 UTC · Powered by GitHub Actions</sub>
+<sub>Last updated: 2026-02-15 06:14:24 UTC · Powered by GitHub Actions</sub>

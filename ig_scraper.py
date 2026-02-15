@@ -1,13 +1,12 @@
 """
 ig_scraper.py — Instagram Saved Posts Scraper
 
-Mirrors the X (Twitter) bookmark scraper logic:
-  - Checks the user's Saved collection on Instagram
-  - Finds new video posts not yet in processed_ids.txt
-  - Returns them in a standardized format for main.py
+Fetches saved video posts using instaloader with cookie auth.
+Avoids rate limits by NOT calling Profile.from_username() — instead
+constructs a lazy Profile object directly from the ds_user_id cookie.
 
 Auth:
-    Uses instaloader with cookies injected from public/ig_cookies.json
+    Loads browser cookies from public/ig_cookies.json
     (exported via a cookie-export Chrome extension).
 
 Usage:
@@ -18,6 +17,7 @@ Usage:
 import json
 import logging
 import os
+from itertools import islice
 from pathlib import Path
 
 import instaloader
@@ -28,68 +28,62 @@ BASE_DIR = Path(__file__).resolve().parent
 IG_COOKIES_PATH = str(BASE_DIR / "public" / "ig_cookies.json")
 PROCESSED_IDS_PATH = str(BASE_DIR / "processed_ids.txt")
 
+# Must match a real browser to avoid blocks
+WEB_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/120.0.0.0 Safari/537.36"
+)
+
 
 # ===================================================================
-# 1. Authentication — cookie injection into instaloader
+# 1. Cookie Loading
 # ===================================================================
 
-def _get_loader(cookies_path: str = IG_COOKIES_PATH) -> instaloader.Instaloader | None:
+def _load_cookies() -> tuple[dict, str]:
     """
-    Creates an authenticated Instaloader instance by injecting
-    browser cookies from ig_cookies.json.
+    Loads cookies from ig_cookies.json and extracts ds_user_id.
 
     Returns:
-        Authenticated Instaloader instance, or None on failure.
+        (cookies_dict, ds_user_id)
+
+    Raises:
+        FileNotFoundError: if cookie file missing
+        ValueError: if ds_user_id not found in cookies
     """
-    if not os.path.exists(cookies_path):
-        logger.error("[IG Scraper] Cookie file not found: %s", cookies_path)
-        return None
+    if not os.path.exists(IG_COOKIES_PATH):
+        raise FileNotFoundError(f"Cookie file not found: {IG_COOKIES_PATH}")
 
-    try:
-        with open(cookies_path, "r", encoding="utf-8") as f:
-            raw_cookies = json.load(f)
-    except (json.JSONDecodeError, OSError) as e:
-        logger.error("[IG Scraper] Failed to read cookies: %s", e)
-        return None
+    with open(IG_COOKIES_PATH, "r", encoding="utf-8") as f:
+        raw_cookies = json.load(f)
 
-    # Validate we have the required cookies
-    cookie_names = {c.get("name") for c in raw_cookies}
-    if "sessionid" not in cookie_names:
-        logger.error("[IG Scraper] No 'sessionid' in cookies — cannot authenticate.")
-        return None
+    # Build a {name: value} dict for injection
+    cookies_dict = {}
+    ds_user_id = None
 
-    # Initialize instaloader with minimal options (we only need metadata)
-    L = instaloader.Instaloader(
-        download_comments=False,
-        download_geotags=False,
-        download_video_thumbnails=False,
-        save_metadata=False,
-        post_metadata_txt_pattern="",
-        quiet=True,
-    )
+    for c in raw_cookies:
+        name = c.get("name")
+        value = c.get("value")
+        if name and value:
+            cookies_dict[name] = value
+            if name == "ds_user_id":
+                ds_user_id = value
 
-    # Inject cookies into instaloader's internal requests session
-    for cookie in raw_cookies:
-        if "name" in cookie and "value" in cookie:
-            L.context._session.cookies.set(
-                cookie["name"],
-                cookie["value"],
-                domain=cookie.get("domain", ".instagram.com"),
-                path=cookie.get("path", "/"),
-            )
+    if not ds_user_id:
+        raise ValueError(
+            "CRITICAL: 'ds_user_id' cookie not found in ig_cookies.json. "
+            "Cannot identify user. Re-export cookies from a logged-in browser."
+        )
 
-    # Extract username from ds_user_id for context
-    ds_user_id = next(
-        (c["value"] for c in raw_cookies if c.get("name") == "ds_user_id"),
-        None,
-    )
+    if "sessionid" not in cookies_dict:
+        raise ValueError("No 'sessionid' cookie found — cannot authenticate.")
 
     logger.info(
-        "[IG Scraper] Instaloader initialized with %d cookies (ds_user_id=%s)",
-        len(raw_cookies), ds_user_id or "unknown",
+        "[IG Scraper] Loaded %d cookies, ds_user_id=%s",
+        len(cookies_dict), ds_user_id,
     )
 
-    return L
+    return cookies_dict, ds_user_id
 
 
 # ===================================================================
@@ -113,29 +107,52 @@ def fetch_saved_videos(limit: int = 20) -> list[dict]:
     Fetches saved posts from Instagram, filters for videos,
     and returns unprocessed ones in a standardized format.
 
-    Mirrors the X bookmarks scraper (scraper.py) interface.
+    Uses a lazy Profile construction to avoid the web_profile_info
+    API call that triggers 429 rate limits.
 
     Args:
         limit: Maximum number of saved posts to scan.
 
     Returns:
-        List of dicts (newest-first from IG, caller picks oldest):
+        List of dicts (newest-first, caller picks oldest):
         [
             {
-                "tweet_id":   "SHORTCODE",     # Used as unique ID
-                "video_url":  "https://...",    # Direct video URL or reel page URL
-                "tweet_text": "caption...",     # Post caption
-                "author":     "@username",      # Post owner
+                "tweet_id":   "SHORTCODE",
+                "video_url":  "https://...",
+                "tweet_text": "caption...",
+                "author":     "@username",
                 "source":     "instagram",
             },
             ...
         ]
     """
-    L = _get_loader()
-    if L is None:
+    # --- Step 1: Load cookies and get user ID ---
+    try:
+        cookies_dict, ds_user_id = _load_cookies()
+    except (FileNotFoundError, ValueError) as e:
+        logger.error("[IG Scraper] %s", e)
         return []
 
-    # Verify authentication and get username
+    # --- Step 2: Initialize instaloader with custom User-Agent ---
+    L = instaloader.Instaloader(
+        download_comments=False,
+        download_geotags=False,
+        download_video_thumbnails=False,
+        save_metadata=False,
+        post_metadata_txt_pattern="",
+        quiet=True,
+        user_agent=WEB_USER_AGENT,
+    )
+
+    # --- Step 3: Inject cookies into instaloader's session ---
+    for name, value in cookies_dict.items():
+        L.context._session.cookies.set(
+            name, value,
+            domain=".instagram.com",
+            path="/",
+        )
+
+    # --- Step 4: Verify auth via test_login() ---
     try:
         username = L.test_login()
     except Exception as e:
@@ -143,20 +160,28 @@ def fetch_saved_videos(limit: int = 20) -> list[dict]:
         return []
 
     if not username:
-        logger.error("[IG Scraper] Cookie auth failed — test_login() returned None.")
+        logger.error(
+            "[IG Scraper] Session invalid — test_login() returned None. "
+            "Cookies may be expired. Re-export from browser."
+        )
         return []
 
-    logger.info("[IG Scraper] Authenticated as @%s", username)
+    logger.info("[IG Scraper] Authenticated as @%s (id=%s)", username, ds_user_id)
 
-    # Get the Profile object (get_saved_posts lives on Profile, not Instaloader)
+    # --- Step 5: Construct lazy Profile (NO web_profile_info call) ---
+    # This avoids the extra API request that triggers 429 rate limits.
+    # We feed instaloader a minimal node dict with the username and id
+    # we already have from cookies + test_login().
     try:
-        profile = instaloader.Profile.from_username(L.context, username)
+        profile = instaloader.Profile(
+            L.context,
+            {"username": username, "id": ds_user_id},
+        )
     except Exception as e:
-        logger.error("[IG Scraper] Failed to load profile for @%s: %s", username, e)
+        logger.error("[IG Scraper] Failed to construct Profile: %s", e)
         return []
 
-    processed_ids = _load_processed_ids()
-
+    # --- Step 6: Fetch saved posts ---
     try:
         logger.info("[IG Scraper] Fetching saved posts (limit=%d)...", limit)
         saved_posts = profile.get_saved_posts()
@@ -164,15 +189,12 @@ def fetch_saved_videos(limit: int = 20) -> list[dict]:
         logger.error("[IG Scraper] Failed to fetch saved posts: %s", e)
         return []
 
+    # --- Step 7: Iterate, filter, deduplicate ---
+    processed_ids = _load_processed_ids()
     new_videos: list[dict] = []
-    scanned = 0
 
     try:
-        for post in saved_posts:
-            if scanned >= limit:
-                break
-            scanned += 1
-
+        for post in islice(saved_posts, limit):
             shortcode = post.shortcode
 
             # Skip already-processed
@@ -185,21 +207,20 @@ def fetch_saved_videos(limit: int = 20) -> list[dict]:
                 logger.debug("[IG Scraper] Skipping non-video: %s", shortcode)
                 continue
 
-            # Extract video URL (direct CDN link from instaloader)
+            # Extract video URL
             try:
                 video_url = post.video_url
             except Exception:
-                # Fallback to the reel page URL (yt-dlp can handle this)
                 video_url = f"https://www.instagram.com/reel/{shortcode}/"
 
-            # Extract caption safely
+            # Extract caption
             caption = ""
             try:
                 caption = post.caption or ""
             except Exception:
                 pass
 
-            # Extract owner username safely
+            # Extract author
             author = "unknown"
             try:
                 author = f"@{post.owner_username}"
@@ -223,8 +244,8 @@ def fetch_saved_videos(limit: int = 20) -> list[dict]:
         logger.error("[IG Scraper] Error iterating saved posts: %s", e)
 
     logger.info(
-        "[IG Scraper] Scanned %d saved posts. Found %d new video(s).",
-        scanned, len(new_videos),
+        "[IG Scraper] Found %d new video(s) in saved posts.",
+        len(new_videos),
     )
 
     return new_videos
@@ -237,7 +258,6 @@ def fetch_saved_videos(limit: int = 20) -> list[dict]:
 if __name__ == "__main__":
     import sys
 
-    # Fix Windows console encoding
     if sys.platform == "win32":
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
