@@ -9,8 +9,8 @@
 | Metric | Value |
 |---|---|
 | **Status** | ⚪ **Idle** |
-| **Queue** | **0** video(s) waiting |
-| **Last Run** | `2026-02-15 10:57:45 UTC` |
+| **Queue** | **1** video(s) waiting |
+| **Last Run** | `2026-02-15 13:09:25 UTC` |
 
 ---
 
@@ -18,18 +18,22 @@
 
 | Field | Value |
 |---|---|
-| **Timestamp** | `2026-02-15 16:27:45` |
+| **Timestamp** | `2026-02-15 18:39:25` |
 | **Source** | `instagram` |
-| **ID** | `discord_1472531772037271695` |
+| **ID** | `discord_1472550245069095171` |
 | **Author** | @mac04693 |
 | **YouTube** | ❌ Failed |
-| **Instagram** | ✅ Media ID `18123306961566651` |
+| **Instagram** | ❌ Failed |
 
 ---
 
 ## 📋 Error Log
 
-_No recent errors._
+### 🚨 Recent Errors
+
+```
+[Source: instagram] BOTH uploads failed for discord_1472550245069095171. Will retry next run.
+```
 
 ---
 
@@ -52,4 +56,4 @@ _No recent errors._
 
 ---
 
-<sub>Last updated: 2026-02-15 10:57:45 UTC · Powered by GitHub Actions</sub>
+<sub>Last updated: 2026-02-15 13:09:25 UTC · Powered by GitHub Actions</sub>
