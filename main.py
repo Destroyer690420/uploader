@@ -33,7 +33,7 @@ if sys.platform == "win32":
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 from scraper import fetch_bookmarked_videos, save_processed_id
-from downloader import download_video, download_ig_reel, cleanup_video, convert_to_vertical
+from downloader import download_video, cleanup_video, convert_to_vertical
 from uploader import upload_video
 
 # ---------------------------------------------------------------------------
@@ -110,12 +110,33 @@ def _yt_limit_reached() -> bool:
 # Instagram DM Source — check for shared Reels
 # ===================================================================
 
+def _load_processed_ids() -> set:
+    """Load already-processed IDs from processed_ids.txt."""
+    ids_file = str(BASE_DIR / "processed_ids.txt")
+    if not os.path.exists(ids_file):
+        return set()
+    with open(ids_file, "r", encoding="utf-8") as f:
+        return {line.strip() for line in f if line.strip()}
+
+
 def _try_ig_dm_source() -> dict | None:
     """
     Attempts to find a Reel shared via Instagram DMs.
 
+    Uses ig_scraper.get_oldest_unread_reel() which:
+      - Loads cookies, builds session
+      - Fetches unread inbox
+      - Filters for clip/media_share from other users
+      - Sorts oldest-first
+      - Marks as seen BEFORE returning (prevents infinite loop)
+
+    Loop Protection:
+      If the returned ID is already in processed_ids.txt, it means
+      mark-as-seen worked previously but the upload failed or the ID
+      was already saved. We skip it to prevent re-uploading.
+
     Returns:
-        A dict with keys: source, media_pk, caption, local_path
+        A dict with keys: source, media_pk, caption, reel_url, tweet_id
         or None if no Reel found or IG is not configured.
     """
     ig_cookies_path = str(BASE_DIR / "public" / "ig_cookies.json")
@@ -124,51 +145,66 @@ def _try_ig_dm_source() -> dict | None:
         return None
 
     try:
-        from ig_scraper import get_client, get_latest_dm_reel, download_reel_by_shortcode, mark_dm_seen
+        from ig_scraper import get_oldest_unread_reel
     except ImportError as e:
         logger.warning("[Source: IG DM] ig_scraper module not available: %s", e)
         return None
 
     logger.info("[Source: IG DM] Checking for shared Reels in DMs...")
 
-    session, loader = get_client()
-    if session is None:
-        logger.warning("[Source: IG DM] Authentication failed — skipping.")
-        return None
-
-    reel_info = get_latest_dm_reel(session)
+    reel_info = get_oldest_unread_reel(ig_cookies_path)
     if reel_info is None:
-        logger.info("[Source: IG DM] No Reels found in DMs.")
+        logger.info("[Source: IG DM] No Reels found in DMs (or mark-as-seen failed).")
         return None
 
-    shortcode = reel_info["shortcode"]
+    # --- Loop Protection ---
+    reel_id = reel_info["tweet_id"]  # e.g. "ig_1234567890"
+    processed = _load_processed_ids()
+    if reel_id in processed:
+        logger.warning(
+            "⚠️  [Source: IG DM] LOOP GUARD: Reel %s is already in processed_ids.txt! "
+            "Mark-as-seen may have failed previously. Skipping to prevent infinite re-upload.",
+            reel_id,
+        )
+        return None
+
     media_pk = reel_info["media_pk"]
     caption = reel_info.get("caption", "")
     sender = reel_info.get("sender", "unknown")
+    reel_url = reel_info.get("reel_url", "")
 
     logger.info(
-        "[Source: IG DM] Found Reel! shortcode=%s from @%s",
-        shortcode, sender,
+        "[Source: IG DM] ✅ Found Reel! shortcode=%s from @%s (marked as seen)",
+        reel_info.get("shortcode", "?"), sender,
     )
 
-    # Download the Reel using instaloader
-    local_path = download_reel_by_shortcode(loader, shortcode)
-    if not local_path:
-        logger.error("[Source: IG DM] Download failed for shortcode=%s", shortcode)
+    # Download the video directly from the reel URL
+    temp_dir = str(BASE_DIR / "temp_videos")
+    os.makedirs(temp_dir, exist_ok=True)
+    local_path = os.path.join(temp_dir, f"ig_{media_pk}.mp4")
+
+    try:
+        logger.info("[Source: IG DM] Downloading reel video...")
+        import requests as req
+        resp = req.get(reel_url, stream=True, timeout=60)
+        resp.raise_for_status()
+        with open(local_path, "wb") as f:
+            for chunk in resp.iter_content(chunk_size=8192):
+                f.write(chunk)
+        file_size = os.path.getsize(local_path) / (1024 * 1024)
+        logger.info("[Source: IG DM] Downloaded %.1f MB → %s", file_size, local_path)
+    except Exception as e:
+        logger.error("[Source: IG DM] Download failed: %s", e)
         return None
 
     return {
         "source": "IG DM",
         "media_pk": media_pk,
-        "tweet_id": f"ig_{media_pk}",  # Unified ID for logging/dashboard
+        "tweet_id": reel_id,
         "tweet_text": caption,
         "author": f"@{sender} (via IG DM)",
-        "video_url": "",
+        "video_url": reel_url,
         "local_path": local_path,
-        # For mark-as-seen after successful upload
-        "_ig_session": session,
-        "_ig_thread_id": reel_info.get("thread_id", ""),
-        "_ig_item_id": reel_info.get("item_id", ""),
     }
 
 
@@ -458,21 +494,13 @@ async def run_pipeline() -> None:
 
     # Only save ID if AT LEAST ONE upload succeeded
     if yt_ok or ig_ok:
+        save_processed_id(target["tweet_id"])
         if source == "X":
-            # For X bookmarks, save to processed_ids.txt
-            save_processed_id(target["tweet_id"])
             logger.info("✅ [Source: X] Tweet %s marked as processed.", target["tweet_id"])
         else:
-            # For IG DMs: mark as seen via API + save to processed_ids.txt
-            ig_session = target.get("_ig_session")
-            thread_id = target.get("_ig_thread_id", "")
-            item_id = target.get("_ig_item_id", "")
-            if ig_session and thread_id and item_id:
-                from ig_scraper import mark_dm_seen
-                mark_dm_seen(ig_session, thread_id, item_id)
-            # Save to processed_ids.txt as backup dedup layer
-            save_processed_id(target["tweet_id"])
-            logger.info("✅ [Source: IG DM] Reel %s processed (seen + saved to processed_ids).", target["tweet_id"])
+            # For IG DMs: mark-as-seen was already done in ig_scraper
+            # before returning the reel. Just save the ID.
+            logger.info("✅ [Source: IG DM] Reel %s saved to processed_ids.", target["tweet_id"])
     else:
         error_msg = (
             f"[Source: {source}] BOTH uploads failed for {target['tweet_id']}. "

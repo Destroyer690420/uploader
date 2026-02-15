@@ -10,20 +10,13 @@
 |---|---|
 | **Status** | ⚪ **Idle** |
 | **Queue** | **0** video(s) waiting |
-| **Last Run** | `2026-02-15 09:58:53 UTC` |
+| **Last Run** | `2026-02-15 05:16:22 UTC` |
 
 ---
 
 ## 🎬 Last Action
 
-| Field | Value |
-|---|---|
-| **Timestamp** | `2026-02-15 09:58:53` |
-| **Source** | `IG DM` |
-| **ID** | `ig_3823910365072393976` |
-| **Author** | @lonelly.fanss (via IG DM) |
-| **YouTube** | ❌ Failed |
-| **Instagram** | ✅ Media ID `18329852065169762` |
+_No videos processed yet._
 
 ---
 
@@ -52,4 +45,4 @@ _No recent errors._
 
 ---
 
-<sub>Last updated: 2026-02-15 09:58:53 UTC · Powered by GitHub Actions</sub>
+<sub>Last updated: 2026-02-15 05:16:22 UTC · Powered by GitHub Actions</sub>

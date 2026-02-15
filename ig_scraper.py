@@ -1,20 +1,18 @@
 """
-ig_scraper.py — Instagram DM Reel Monitor (Web-Based)
+ig_scraper.py — Instagram DM Reel Monitor (Pure Web API)
 
-Monitors Direct Messages on the Instagram account for shared Reels.
-Uses Instaloader for downloading and raw requests (web API) for DM access.
-
-This avoids Instagram's Mobile API entirely — uses the Web API with
-browser cookies exported to public/ig_cookies.json.
+Monitors Direct Messages for shared Reels using the Instagram Web API
+with browser cookies (no instagrapi / instaloader).
 
 Auth:
     Loads browser cookies from public/ig_cookies.json
     (exported via a cookie-export Chrome extension).
+    Extracts csrftoken for the mark-as-seen POST.
 
 Usage:
-    from ig_scraper import get_client, get_latest_dm_reel
-    session, loader = get_client()
-    result = get_latest_dm_reel(session)
+    from ig_scraper import get_oldest_unread_reel
+    result = get_oldest_unread_reel()
+    # result = {"reel_url": "...", "media_pk": "...", ...} or None
 """
 
 import json
@@ -29,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 BASE_DIR = Path(__file__).resolve().parent
 IG_COOKIES_PATH = str(BASE_DIR / "public" / "ig_cookies.json")
+PROCESSED_IDS_PATH = str(BASE_DIR / "processed_ids.txt")
 
 # Desktop Chrome User-Agent (must match a real browser)
 WEB_USER_AGENT = (
@@ -38,35 +37,33 @@ WEB_USER_AGENT = (
 )
 
 # Instagram Web API endpoints
-IG_INBOX_URL = "https://www.instagram.com/api/v1/direct_v2/inbox/"
 IG_WEB_BASE = "https://www.instagram.com"
+IG_INBOX_UNREAD_URL = f"{IG_WEB_BASE}/api/v1/direct_v2/inbox/?selected_filter=unread"
 
 
 # ===================================================================
-# 1. Authentication — cookie file + requests session
+# 1. Cookie Loading & Session Setup
 # ===================================================================
 
-def get_client(cookies_path: str = IG_COOKIES_PATH):
+def _load_cookies(cookies_path: str = IG_COOKIES_PATH) -> tuple[dict, str, str] | None:
     """
-    Creates and returns:
-      - An authenticated requests.Session for the Instagram Web API
-      - An Instaloader instance for downloading posts
-
-    Loads browser cookies from ig_cookies.json.
+    Loads cookies from ig_cookies.json.
 
     Returns:
-        Tuple of (requests.Session, instaloader.Instaloader) or (None, None).
+        (cookies_dict, csrftoken, ds_user_id) or None on failure.
+        csrftoken is REQUIRED for mark-as-seen.
+        ds_user_id is the logged-in user's numeric ID (to filter out own messages).
     """
     if not os.path.exists(cookies_path):
         logger.error("Cookie file not found: %s", cookies_path)
-        return None, None
+        return None
 
     try:
         with open(cookies_path, "r", encoding="utf-8") as f:
             raw_cookies = json.load(f)
     except (json.JSONDecodeError, OSError) as e:
         logger.error("Failed to read cookie file %s: %s", cookies_path, e)
-        return None, None
+        return None
 
     # Build a {name: value} dict
     cookies_dict = {
@@ -77,17 +74,33 @@ def get_client(cookies_path: str = IG_COOKIES_PATH):
 
     if "sessionid" not in cookies_dict:
         logger.error("No 'sessionid' cookie found in %s", cookies_path)
-        return None, None
+        return None
+
+    csrftoken = cookies_dict.get("csrftoken", "")
+    if not csrftoken:
+        logger.error("No 'csrftoken' cookie found — mark-as-seen will fail!")
+        return None
+
+    ds_user_id = cookies_dict.get("ds_user_id", "")
+    if not ds_user_id:
+        logger.warning("No 'ds_user_id' cookie — cannot filter outgoing messages.")
 
     logger.info(
-        "Loaded %d cookies from %s", len(cookies_dict), cookies_path
+        "[IG Scraper] Loaded %d cookies, csrftoken=%s..., ds_user_id=%s",
+        len(cookies_dict), csrftoken[:8], ds_user_id,
     )
 
-    # --- Build requests.Session for Web API (DMs) ---
+    return cookies_dict, csrftoken, ds_user_id
+
+
+def _build_session(cookies_dict: dict, csrftoken: str) -> requests.Session:
+    """
+    Builds a requests.Session that mimics the Instagram web interface.
+    """
     session = requests.Session()
     session.headers.update({
         "User-Agent": WEB_USER_AGENT,
-        "X-CSRFToken": cookies_dict.get("csrftoken", ""),
+        "X-CSRFToken": csrftoken,
         "X-IG-App-ID": "936619743392459",  # Instagram Web App ID
         "X-Requested-With": "XMLHttpRequest",
         "Referer": "https://www.instagram.com/direct/inbox/",
@@ -96,332 +109,342 @@ def get_client(cookies_path: str = IG_COOKIES_PATH):
     for name, value in cookies_dict.items():
         session.cookies.set(name, value, domain=".instagram.com")
 
-    # Verify session by hitting the DM inbox (avoids useragent mismatch
-    # on the accounts/current_user endpoint which is UA-locked)
-    try:
-        r = session.get(IG_INBOX_URL, timeout=15)
-        if r.status_code == 200:
-            logger.info("Instagram web session verified (DM inbox OK).")
-        else:
-            logger.warning(
-                "Instagram session check returned %d — DMs may not work.",
-                r.status_code,
-            )
-    except Exception as e:
-        logger.warning("Could not verify IG web session: %s", e)
-
-    # --- Build Instaloader for downloading ---
-    try:
-        import instaloader
-        L = instaloader.Instaloader(
-            download_comments=False,
-            download_geotags=False,
-            download_video_thumbnails=False,
-            save_metadata=False,
-            post_metadata_txt_pattern="",
-        )
-        # Inject cookies into instaloader's internal session
-        for cookie in raw_cookies:
-            L.context._session.cookies.set(
-                cookie["name"],
-                cookie["value"],
-                domain=cookie.get("domain", ".instagram.com"),
-                path=cookie.get("path", "/"),
-            )
-        logger.info("Instaloader session initialized with cookies.")
-    except ImportError:
-        logger.warning("instaloader not installed — downloads will fail.")
-        L = None
-
-    return session, L
+    return session
 
 
 # ===================================================================
-# 2. DM Monitor — find oldest unread Reel (via Web API)
+# 2. Helpers
 # ===================================================================
-
-IG_INBOX_UNREAD_URL = IG_INBOX_URL + "?selected_filter=unread"
-
 
 def _load_processed_ids() -> set:
     """Load already-processed IDs from processed_ids.txt."""
-    ids_file = str(BASE_DIR / "processed_ids.txt")
-    if not os.path.exists(ids_file):
+    if not os.path.exists(PROCESSED_IDS_PATH):
         return set()
-    with open(ids_file, "r", encoding="utf-8") as f:
+    with open(PROCESSED_IDS_PATH, "r", encoding="utf-8") as f:
         return {line.strip() for line in f if line.strip()}
 
 
-def _extract_reel_from_item(item: dict) -> dict | None:
-    """Try to extract Reel info from a single DM message item."""
+def _extract_reel_url(item: dict) -> str | None:
+    """
+    Extracts the Reel/video URL from a DM item.
+
+    Checks clip → media_share for video_versions or video_url.
+    Returns the best video URL or None.
+    """
     media = None
-    media_source = None
 
-    # Method 1: clip (shared Reel)
-    clip = item.get("clip", {})
-    if clip and isinstance(clip, dict) and clip.get("clip"):
-        media = clip["clip"]
-        media_source = "clip"
+    item_type = item.get("item_type", "")
 
-    # Method 2: media_share (shared post/reel)
-    if media is None:
-        media_share = item.get("media_share", {})
-        if media_share and isinstance(media_share, dict):
-            media = media_share
-            media_source = "media_share"
+    if item_type == "clip":
+        clip = item.get("clip", {})
+        if isinstance(clip, dict):
+            media = clip.get("clip", clip)
+    elif item_type == "media_share":
+        media = item.get("media_share", {})
 
-    # Method 3: felix_share (IGTV / Reel share)
-    if media is None:
-        felix = item.get("felix_share", {})
-        if felix and isinstance(felix, dict) and felix.get("video"):
-            media = felix["video"]
-            media_source = "felix_share"
-
-    if media is None:
+    if not media or not isinstance(media, dict):
         return None
 
-    # Extract shortcode
-    shortcode = media.get("code") or media.get("shortcode")
-    if not shortcode:
-        return None
+    # Try video_versions first (array of {url, width, height})
+    video_versions = media.get("video_versions", [])
+    if video_versions and isinstance(video_versions, list):
+        # Pick the highest quality (first is usually best)
+        return video_versions[0].get("url")
 
-    # Extract media_pk
-    media_pk = media.get("pk") or media.get("id", "")
-    if isinstance(media_pk, str) and "_" in media_pk:
-        media_pk = media_pk.split("_")[0]
+    # Fallback: direct video_url
+    video_url = media.get("video_url")
+    if video_url:
+        return video_url
 
-    # Extract caption
-    caption = ""
-    caption_obj = media.get("caption")
-    if isinstance(caption_obj, dict):
-        caption = caption_obj.get("text", "")
-    elif isinstance(caption_obj, str):
-        caption = caption_obj
-
-    return {
-        "shortcode": shortcode,
-        "media_pk": str(media_pk),
-        "caption": caption,
-        "media_source": media_source,
-    }
+    return None
 
 
-def mark_dm_seen(
+def _extract_shortcode(item: dict) -> str:
+    """Extracts the shortcode from a DM item's media."""
+    item_type = item.get("item_type", "")
+    media = None
+
+    if item_type == "clip":
+        clip = item.get("clip", {})
+        if isinstance(clip, dict):
+            media = clip.get("clip", clip)
+    elif item_type == "media_share":
+        media = item.get("media_share", {})
+
+    if media and isinstance(media, dict):
+        return media.get("code", "") or media.get("shortcode", "")
+    return ""
+
+
+def _extract_media_pk(item: dict) -> str:
+    """Extracts the media_pk from a DM item's media."""
+    item_type = item.get("item_type", "")
+    media = None
+
+    if item_type == "clip":
+        clip = item.get("clip", {})
+        if isinstance(clip, dict):
+            media = clip.get("clip", clip)
+    elif item_type == "media_share":
+        media = item.get("media_share", {})
+
+    if media and isinstance(media, dict):
+        pk = media.get("pk") or media.get("id", "")
+        pk = str(pk)
+        if "_" in pk:
+            pk = pk.split("_")[0]
+        return pk
+    return ""
+
+
+def _extract_caption(item: dict) -> str:
+    """Extracts the caption text from a DM item's media."""
+    item_type = item.get("item_type", "")
+    media = None
+
+    if item_type == "clip":
+        clip = item.get("clip", {})
+        if isinstance(clip, dict):
+            media = clip.get("clip", clip)
+    elif item_type == "media_share":
+        media = item.get("media_share", {})
+
+    if media and isinstance(media, dict):
+        caption_obj = media.get("caption")
+        if isinstance(caption_obj, dict):
+            return caption_obj.get("text", "")
+        elif isinstance(caption_obj, str):
+            return caption_obj
+    return ""
+
+
+# ===================================================================
+# 3. Mark as Seen (THE FIX)
+# ===================================================================
+
+def mark_as_seen(
     session: requests.Session,
     thread_id: str,
     item_id: str,
+    csrf_token: str,
 ) -> bool:
     """
     Marks a specific DM item as seen via Instagram's Web API.
 
     POST /api/v1/direct_v2/threads/{thread_id}/items/{item_id}/seen/
 
-    Args:
-        session: Authenticated requests.Session with cookies + headers.
-        thread_id: The DM thread ID.
-        item_id: The specific message item ID.
+    CRITICAL: Must include x-csrftoken header, proper payload, and
+    XMLHttpRequest + Referer headers or Instagram silently ignores it.
 
     Returns:
-        True if marked successfully, False otherwise.
+        True if marked successfully (200 OK), False otherwise.
     """
-    url = (
-        f"{IG_WEB_BASE}/api/v1/direct_v2/threads/"
-        f"{thread_id}/items/{item_id}/seen/"
-    )
+    url = f"{IG_WEB_BASE}/api/v1/direct_v2/threads/{thread_id}/items/{item_id}/seen/"
+
+    payload = {
+        "action": "mark_seen",
+        "thread_id": thread_id,
+        "item_id": item_id,
+        "use_unified_inbox": "true",
+    }
+
+    headers = {
+        "x-csrftoken": csrf_token,           # <--- CRITICAL
+        "x-requested-with": "XMLHttpRequest",
+        "x-instagram-ajax": "1",
+        "Referer": "https://www.instagram.com/direct/inbox/",
+    }
 
     try:
-        r = session.post(url, timeout=15)
-        if r.status_code == 200:
+        resp = session.post(url, data=payload, headers=headers, timeout=15)
+
+        if resp.status_code == 200:
             logger.info(
-                "Marked DM item %s in thread %s as seen.",
-                item_id, thread_id,
+                "[IG Scraper] ✅ Mark-as-seen SUCCESS: thread=%s, item=%s (HTTP 200)",
+                thread_id, item_id,
             )
             return True
         else:
-            logger.warning(
-                "Mark-as-seen returned %d: %s",
-                r.status_code, r.text[:200],
+            logger.error(
+                "[IG Scraper] ❌ Mark-as-seen FAILED: HTTP %d — %s",
+                resp.status_code, resp.text[:300],
             )
             return False
     except Exception as e:
-        logger.warning("Failed to mark DM as seen: %s", e)
+        logger.error("[IG Scraper] ❌ Mark-as-seen exception: %s", e)
         return False
 
 
-def get_latest_dm_reel(session: requests.Session) -> dict | None:
+# ===================================================================
+# 4. Main API — get_oldest_unread_reel()
+# ===================================================================
+
+def get_oldest_unread_reel(cookies_path: str = IG_COOKIES_PATH) -> dict | None:
     """
-    Scans UNREAD DMs for the oldest unprocessed shared Reel.
+    Finds the oldest unread Reel in Instagram DMs and marks it as seen.
 
     Flow:
-      1. Fetch inbox with ?selected_filter=unread
-      2. Collect ALL Reel messages across all threads
-      3. Sort oldest-first (by timestamp)
-      4. Skip any already in processed_ids.txt (backup dedup)
-      5. Return the first unprocessed one with thread_id + item_id
+      1. Load cookies, extract csrftoken + ds_user_id
+      2. Build authenticated requests.Session
+      3. GET /inbox/?selected_filter=unread
+      4. Flatten all items across all threads
+      5. Filter: only clip/media_share items NOT sent by me
+      6. Sort by timestamp ascending (oldest → newest)
+      7. Skip already-processed IDs (backup dedup)
+      8. Pick the FIRST (oldest) unread reel
+      9. Mark it as seen — if this fails, return None (prevent loop)
+     10. Return reel info with URL
 
     Returns:
-        Dict with keys {shortcode, media_pk, caption, sender,
-                        thread_id, item_id}
-        or None if no unprocessed Reel found.
+        Dict with keys: reel_url, media_pk, shortcode, caption, sender,
+                        thread_id, item_id, tweet_id (unified ID)
+        or None if no unprocessed Reel found or mark-as-seen failed.
     """
-    # Try unread filter first, fall back to full inbox
+    # --- Step 1: Load cookies ---
+    cookie_data = _load_cookies(cookies_path)
+    if cookie_data is None:
+        return None
+
+    cookies_dict, csrftoken, my_user_id = cookie_data
+
+    # --- Step 2: Build session ---
+    session = _build_session(cookies_dict, csrftoken)
+
+    # --- Step 3: Fetch unread inbox ---
     try:
         r = session.get(IG_INBOX_UNREAD_URL, timeout=15)
         if r.status_code != 200:
-            logger.warning(
-                "Unread inbox filter returned %d, falling back to full inbox.",
-                r.status_code,
+            logger.error(
+                "[IG Scraper] Inbox request failed: HTTP %d — %s",
+                r.status_code, r.text[:300],
             )
-            r = session.get(IG_INBOX_URL, timeout=15)
+            return None
     except Exception as e:
-        logger.error("Failed to fetch DM inbox: %s", e)
-        return None
-
-    if r.status_code != 200:
-        logger.error(
-            "DM inbox request failed with status %d: %s",
-            r.status_code,
-            r.text[:300],
-        )
+        logger.error("[IG Scraper] Failed to fetch inbox: %s", e)
         return None
 
     try:
         data = r.json()
     except json.JSONDecodeError:
-        logger.error("DM inbox returned non-JSON response.")
+        logger.error("[IG Scraper] Inbox returned non-JSON response.")
         return None
 
     inbox = data.get("inbox", {})
     threads = inbox.get("threads", [])
 
     if not threads:
-        logger.info("No unread DM threads found.")
+        logger.info("[IG Scraper] No unread DM threads found.")
         return None
 
-    # Load already-processed IDs (backup dedup layer)
-    processed = _load_processed_ids()
-
-    # Collect ALL reels from ALL threads with timestamps + IDs
+    # --- Step 4 & 5: Flatten + Filter ---
     all_reels = []
 
     for thread in threads:
         thread_id = str(thread.get("thread_id", ""))
         items = thread.get("items", [])
+
+        # Get sender info from thread users
         sender = ""
         users = thread.get("users", [])
         if users:
             sender = users[0].get("username", "")
 
         for item in items:
-            reel = _extract_reel_from_item(item)
-            if reel is None:
+            item_type = item.get("item_type", "")
+
+            # FILTER: Only clip (Reel) or media_share
+            if item_type not in ("clip", "media_share"):
                 continue
 
-            # Add metadata for tracking
-            reel["sender"] = sender
-            reel["timestamp"] = item.get("timestamp", 0)
-            reel["thread_id"] = thread_id
-            reel["item_id"] = str(item.get("item_id", ""))
+            # FILTER: Skip messages sent by ME (outgoing)
+            item_user_id = str(item.get("user_id", ""))
+            if my_user_id and item_user_id == my_user_id:
+                logger.debug(
+                    "[IG Scraper] Skipping outgoing message (user_id=%s)",
+                    item_user_id,
+                )
+                continue
 
-            all_reels.append(reel)
+            # Extract reel URL
+            reel_url = _extract_reel_url(item)
+            if not reel_url:
+                continue
+
+            media_pk = _extract_media_pk(item)
+            shortcode = _extract_shortcode(item)
+            caption = _extract_caption(item)
+
+            all_reels.append({
+                "reel_url": reel_url,
+                "media_pk": media_pk,
+                "shortcode": shortcode,
+                "caption": caption,
+                "sender": sender,
+                "timestamp": item.get("timestamp", 0),
+                "thread_id": thread_id,
+                "item_id": str(item.get("item_id", "")),
+            })
 
     if not all_reels:
-        logger.info("No shared Reels found in unread DMs.")
+        logger.info("[IG Scraper] No shared Reels found in unread DMs.")
         return None
 
-    # Sort oldest-first (smallest timestamp = oldest)
+    # --- Step 6: Sort oldest-first ---
     all_reels.sort(key=lambda r: int(r.get("timestamp", 0)))
 
     logger.info(
-        "Found %d Reel(s) in unread DMs. Checking for unprocessed...",
+        "[IG Scraper] Found %d Reel(s) in unread DMs. Checking for unprocessed...",
         len(all_reels),
     )
 
+    # --- Step 7: Skip already-processed ---
+    processed = _load_processed_ids()
+
     for reel in all_reels:
         reel_id = f"ig_{reel['media_pk']}"
+
         if reel_id in processed:
             logger.debug(
-                "Skipping already-processed Reel %s (%s)",
+                "[IG Scraper] Skipping already-processed Reel %s (%s)",
                 reel["shortcode"], reel_id,
             )
             continue
 
+        # --- Step 8: Found our target ---
         logger.info(
-            "Found unprocessed Reel! shortcode=%s (pk=%s) from @%s "
-            "[thread=%s, item=%s, via %s]",
+            "[IG Scraper] 🎯 Oldest unread reel: shortcode=%s (pk=%s) from @%s "
+            "[thread=%s, item=%s]",
             reel["shortcode"], reel["media_pk"],
-            reel["sender"], reel["thread_id"],
-            reel["item_id"], reel["media_source"],
-        )
-        # Remove internal keys before returning
-        reel.pop("timestamp", None)
-        reel.pop("media_source", None)
-        return reel
-
-    logger.info("All %d Reel(s) in DMs already processed.", len(all_reels))
-    return None
-
-
-# ===================================================================
-# 3. Download a Reel by shortcode (via Instaloader)
-# ===================================================================
-
-def download_reel_by_shortcode(
-    loader,
-    shortcode: str,
-    target_dir: str = str(BASE_DIR / "temp_videos"),
-) -> str | None:
-    """
-    Downloads a Reel using Instaloader by its shortcode.
-
-    Args:
-        loader: Authenticated instaloader.Instaloader instance.
-        shortcode: The Reel's shortcode (e.g., 'C1a2B3c4D5e').
-        target_dir: Directory to save into.
-
-    Returns:
-        Path to the downloaded video file, or None on failure.
-    """
-    if loader is None:
-        logger.error("Instaloader not available — cannot download.")
-        return None
-
-    os.makedirs(target_dir, exist_ok=True)
-
-    try:
-        import instaloader
-        post = instaloader.Post.from_shortcode(loader.context, shortcode)
-
-        logger.info(
-            "Downloading Reel: %s (type: %s)", shortcode, post.typename
+            reel["sender"], reel["thread_id"], reel["item_id"],
         )
 
-        # Get the video URL directly from the Post object
-        video_url = post.video_url
-        if not video_url:
-            logger.error("No video URL found for Reel %s", shortcode)
+        # --- Step 9: Mark as seen BEFORE returning ---
+        seen_ok = mark_as_seen(
+            session, reel["thread_id"], reel["item_id"], csrftoken
+        )
+
+        if not seen_ok:
+            logger.error(
+                "[IG Scraper] ❌ Mark-as-seen failed for item %s. "
+                "NOT returning this reel to prevent infinite loop.",
+                reel["item_id"],
+            )
             return None
 
-        # Download the video with requests to a known path
-        output_path = os.path.join(target_dir, f"ig_{shortcode}.mp4")
+        # --- Step 10: Return reel info ---
+        return {
+            "reel_url": reel["reel_url"],
+            "media_pk": reel["media_pk"],
+            "shortcode": reel["shortcode"],
+            "caption": reel["caption"],
+            "sender": reel["sender"],
+            "thread_id": reel["thread_id"],
+            "item_id": reel["item_id"],
+            "tweet_id": f"ig_{reel['media_pk']}",  # Unified ID for processed_ids.txt
+        }
 
-        resp = requests.get(video_url, stream=True, timeout=60)
-        resp.raise_for_status()
-
-        with open(output_path, "wb") as f:
-            for chunk in resp.iter_content(chunk_size=8192):
-                f.write(chunk)
-
-        file_size = os.path.getsize(output_path)
-        logger.info(
-            "Downloaded Reel to: %s (%.1f MB)",
-            output_path, file_size / 1024 / 1024,
-        )
-        return output_path
-
-    except Exception as e:
-        logger.error("Error downloading Reel %s: %s", shortcode, e)
-        return None
+    logger.info("[IG Scraper] All %d Reel(s) in DMs already processed.", len(all_reels))
+    return None
 
 
 # ===================================================================
@@ -437,16 +460,14 @@ if __name__ == "__main__":
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     )
 
-    session, loader = get_client()
-    if session:
-        result = get_latest_dm_reel(session)
-        if result:
-            print(f"\nReel found!")
-            print(f"   shortcode: {result['shortcode']}")
-            print(f"   media_pk:  {result['media_pk']}")
-            print(f"   caption:   {result['caption'][:80]}...")
-            print(f"   sender:    @{result['sender']}")
-        else:
-            print("\nNo Reels in DMs.")
+    result = get_oldest_unread_reel()
+    if result:
+        print(f"\n✅ Reel found!")
+        print(f"   shortcode : {result['shortcode']}")
+        print(f"   media_pk  : {result['media_pk']}")
+        print(f"   caption   : {result['caption'][:80]}...")
+        print(f"   sender    : @{result['sender']}")
+        print(f"   reel_url  : {result['reel_url'][:100]}...")
+        print(f"   marked    : SEEN ✅")
     else:
-        print("\nFailed to authenticate.")
+        print("\n❌ No Reels in DMs (or mark-as-seen failed).")
