@@ -13,6 +13,8 @@ import logging
 import os
 import shutil
 import subprocess
+import json
+import time
 from pathlib import Path
 
 import yt_dlp
@@ -35,6 +37,48 @@ DEFAULT_DOWNLOAD_DIR = str(BASE_DIR / "temp_videos")
 
 
 # ===================================================================
+# 0. Helpers
+# ===================================================================
+
+def ensure_netscape_cookies(json_path, txt_path):
+    """
+    Converts a JSON cookie file (from EditThisCookie) to Netscape format
+    required by yt-dlp.
+    """
+    if not os.path.exists(json_path):
+        return None
+
+    # If TXT exists and is newer than JSON, use it
+    if os.path.exists(txt_path):
+        if os.path.getmtime(txt_path) > os.path.getmtime(json_path):
+            return txt_path
+            
+    logger.info("Converting JSON cookies to Netscape format...")
+    try:
+        with open(json_path, 'r', encoding='utf-8') as f:
+            cookies = json.load(f)
+
+        with open(txt_path, 'w', encoding='utf-8') as f:
+            f.write("# Netscape HTTP Cookie File\n")
+            for c in cookies:
+                domain = c.get('domain', '')
+                # Netscape format: domain, flag, path, secure, expiration, name, value
+                flag = 'TRUE' if domain.startswith('.') else 'FALSE'
+                path = c.get('path', '/')
+                secure = 'TRUE' if c.get('secure', False) else 'FALSE'
+                expiration = str(int(c.get('expirationDate', time.time() + 3600)))
+                name = c.get('name', '')
+                value = c.get('value', '')
+                
+                f.write(f"{domain}\t{flag}\t{path}\t{secure}\t{expiration}\t{name}\t{value}\n")
+        
+        return txt_path
+    except Exception as e:
+        logger.error(f"Cookie conversion failed: {e}")
+        return None
+
+
+# ===================================================================
 # 1. Download a single video
 # ===================================================================
 
@@ -52,7 +96,7 @@ def download_video(
         output_dir: Directory to save into (created if it doesn't exist).
 
     Returns:
-        Absolute path to the downloaded file, or None if download failed.
+        Tuple (filepath, caption), or (None, None) if download failed.
     """
     os.makedirs(output_dir, exist_ok=True)
 
@@ -71,19 +115,29 @@ def download_video(
     }
 
     # Inject cookies for authenticated downloads (IG Reels, Twitter videos)
-    ig_cookies = str(BASE_DIR / "public" / "ig_cookies.json")
+    IG_COOKIES_PATH = str(BASE_DIR / "public" / "ig_cookies.json")
+    IG_COOKIES_TXT = str(BASE_DIR / 'public' / 'ig_cookies.txt')
     x_cookies = str(BASE_DIR / "public" / "cookies.json")
 
-    if "instagram.com" in video_url.lower() and os.path.exists(ig_cookies):
-        ydl_opts["cookiefile"] = ig_cookies
-        logger.info("Using IG cookies for Instagram download.")
+    # Handle Instagram cookies with conversion
+    if "instagram.com" in video_url.lower():
+        cookie_file = ensure_netscape_cookies(IG_COOKIES_PATH, IG_COOKIES_TXT)
+        if cookie_file:
+            logger.info("Using converted Netscape cookies.")
+            ydl_opts['cookiefile'] = cookie_file
+
     elif ("twitter.com" in video_url.lower() or "x.com" in video_url.lower()) and os.path.exists(x_cookies):
         ydl_opts["cookiefile"] = x_cookies
         logger.info("Using X cookies for Twitter download.")
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            # ORIGINAL: info = ydl.extract_info(video_url, download=True)
+            # CHANGED: fetch metadata AND download
             info = ydl.extract_info(video_url, download=True)
+
+            # Extract caption/description
+            caption = info.get('description') or info.get('title') or ''
 
             # Determine the actual filename yt-dlp wrote
             if info and "requested_downloads" in info:
@@ -98,24 +152,24 @@ def download_video(
                     "✅ Downloaded tweet %s — %.1f MB → %s",
                     tweet_id, size_mb, filepath,
                 )
-                return filepath
+                return filepath, caption
             else:
                 logger.error(
                     "Download reported success but file not found for tweet %s",
                     tweet_id,
                 )
-                return None
+                return None, None
 
     except yt_dlp.utils.DownloadError as e:
         logger.error(
             "⚠️  yt-dlp download error for tweet %s: %s", tweet_id, e
         )
-        return None
+        return None, None
     except Exception as e:
         logger.error(
             "⚠️  Unexpected error downloading tweet %s: %s", tweet_id, e
         )
-        return None
+        return None, None
 
 
 def _find_downloaded_file(output_dir: str, tweet_id: str) -> str | None:
@@ -246,9 +300,9 @@ def download_all(
             tweet_id, entry.get("author", "unknown"),
         )
 
-        local_path = download_video(video_url, tweet_id, output_dir)
+        local_path, caption = download_video(video_url, tweet_id, output_dir)
 
-        result = {**entry, "local_path": local_path}
+        result = {**entry, "local_path": local_path, "caption_from_download": caption}
         results.append(result)
 
     # Summary
@@ -327,7 +381,7 @@ if __name__ == "__main__":
             len(videos), test_entry["tweet_id"],
         )
 
-        local_path = download_video(
+        local_path, caption = download_video(
             test_entry["video_url"], test_entry["tweet_id"]
         )
 
@@ -335,6 +389,7 @@ if __name__ == "__main__":
             print(f"\n{'='*60}")
             print(f"  ✅ Test download successful!")
             print(f"  File: {local_path}")
+            print(f"  Caption: {caption[:50]}...")
             print(f"  Size: {os.path.getsize(local_path) / (1024*1024):.1f} MB")
             print(f"{'='*60}\n")
 

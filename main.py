@@ -323,8 +323,9 @@ async def run_pipeline() -> None:
     # ------------------------------------------------------------------
     logger.info("[%s] [Source: %s] Downloading video...", timestamp(), source)
     local_path = None
+    real_caption = None
     try:
-        local_path = download_video(video["video_url"], video["tweet_id"])
+        local_path, real_caption = download_video(video["video_url"], video["tweet_id"])
     except Exception as e:
         error_msg = f"[Source: {source}] Download failed for {video['tweet_id']}: {e}"
         logger.error(error_msg)
@@ -347,6 +348,10 @@ async def run_pipeline() -> None:
             source=source,
         )
         return
+
+    if video['source'] == 'discord' and real_caption:
+        logger.info("[%s] [INFO] Updating caption from metadata: %s...", timestamp(), real_caption[:30])
+        video['tweet_text'] = real_caption
 
     target = {**video, "local_path": local_path}
 

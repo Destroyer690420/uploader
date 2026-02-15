@@ -8,9 +8,9 @@
 
 | Metric | Value |
 |---|---|
-| **Status** | 🔴 **Error** |
-| **Queue** | **1** video(s) waiting |
-| **Last Run** | `2026-02-15 07:36:20 UTC` |
+| **Status** | ⚪ **Idle** |
+| **Queue** | **0** video(s) waiting |
+| **Last Run** | `2026-02-15 10:39:07 UTC` |
 
 ---
 
@@ -18,22 +18,18 @@
 
 | Field | Value |
 |---|---|
-| **Timestamp** | `2026-02-15 13:06:20` |
+| **Timestamp** | `2026-02-15 16:09:07` |
 | **Source** | `instagram` |
-| **ID** | `discord_1472490789916512380` |
+| **ID** | `discord_1472503342298300499` |
 | **Author** | @mac04693 |
 | **YouTube** | ❌ Failed |
-| **Instagram** | ❌ Failed |
+| **Instagram** | ✅ Media ID `18178550560372228` |
 
 ---
 
 ## 📋 Error Log
 
-### 🚨 Recent Errors
-
-```
-[Source: instagram] Download returned None for discord_1472490789916512380
-```
+_No recent errors._
 
 ---
 
@@ -56,4 +52,4 @@
 
 ---
 
-<sub>Last updated: 2026-02-15 07:36:20 UTC · Powered by GitHub Actions</sub>
+<sub>Last updated: 2026-02-15 10:39:07 UTC · Powered by GitHub Actions</sub>
