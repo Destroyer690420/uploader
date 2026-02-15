@@ -5,13 +5,13 @@ Designed for GitHub Actions: performs exactly ONE upload cycle and exits.
 No time.sleep() — the cron schedule handles spacing between runs.
 
 Sources (checked in order):
-  1. Instagram DMs — shared Reels on the worker account
-  2. X Bookmarks — bookmarked video tweets
+  1. Instagram Saved — saved video posts (priority)
+  2. X Bookmarks — bookmarked video tweets (fallback)
 
 Flow:
-  1. Check IG DMs for a shared Reel (source priority)
-  2. If no Reel, scrape X bookmarks for new videos
-  3. Pick a single video (oldest for X, latest for IG)
+  1. Check IG Saved posts for new videos
+  2. If no IG videos, scrape X bookmarks
+  3. Pick the single oldest unprocessed video
   4. Download → Convert to vertical → Upload (YouTube + Instagram) → Cleanup
   5. Save state + Generate README dashboard
   6. Exit
@@ -107,105 +107,39 @@ def _yt_limit_reached() -> bool:
 
 
 # ===================================================================
-# Instagram DM Source — check for shared Reels
+# Instagram Saved Source — check for saved video posts
 # ===================================================================
 
-def _load_processed_ids() -> set:
-    """Load already-processed IDs from processed_ids.txt."""
-    ids_file = str(BASE_DIR / "processed_ids.txt")
-    if not os.path.exists(ids_file):
-        return set()
-    with open(ids_file, "r", encoding="utf-8") as f:
-        return {line.strip() for line in f if line.strip()}
-
-
-def _try_ig_dm_source() -> dict | None:
+def _try_ig_saved_source() -> list[dict]:
     """
-    Attempts to find a Reel shared via Instagram DMs.
+    Fetches saved video posts from Instagram.
 
-    Uses ig_scraper.get_oldest_unread_reel() which:
-      - Loads cookies, builds session
-      - Fetches unread inbox
-      - Filters for clip/media_share from other users
-      - Sorts oldest-first
-      - Marks as seen BEFORE returning (prevents infinite loop)
-
-    Loop Protection:
-      If the returned ID is already in processed_ids.txt, it means
-      mark-as-seen worked previously but the upload failed or the ID
-      was already saved. We skip it to prevent re-uploading.
-
-    Returns:
-        A dict with keys: source, media_pk, caption, reel_url, tweet_id
-        or None if no Reel found or IG is not configured.
+    Returns a list of dicts (same format as X bookmarks) or empty list.
     """
     ig_cookies_path = str(BASE_DIR / "public" / "ig_cookies.json")
     if not os.path.exists(ig_cookies_path):
-        logger.info("[Source: IG DM] ig_cookies.json not found — skipping IG source.")
-        return None
+        logger.info("[Source: IG Saved] ig_cookies.json not found — skipping.")
+        return []
 
     try:
-        from ig_scraper import get_oldest_unread_reel
+        from ig_scraper import fetch_saved_videos
     except ImportError as e:
-        logger.warning("[Source: IG DM] ig_scraper module not available: %s", e)
-        return None
+        logger.warning("[Source: IG Saved] ig_scraper module not available: %s", e)
+        return []
 
-    logger.info("[Source: IG DM] Checking for shared Reels in DMs...")
+    logger.info("[Source: IG Saved] Checking saved posts...")
 
-    reel_info = get_oldest_unread_reel(ig_cookies_path)
-    if reel_info is None:
-        logger.info("[Source: IG DM] No Reels found in DMs (or mark-as-seen failed).")
-        return None
-
-    # --- Loop Protection ---
-    reel_id = reel_info["tweet_id"]  # e.g. "ig_1234567890"
-    processed = _load_processed_ids()
-    if reel_id in processed:
-        logger.warning(
-            "⚠️  [Source: IG DM] LOOP GUARD: Reel %s is already in processed_ids.txt! "
-            "Mark-as-seen may have failed previously. Skipping to prevent infinite re-upload.",
-            reel_id,
-        )
-        return None
-
-    media_pk = reel_info["media_pk"]
-    caption = reel_info.get("caption", "")
-    sender = reel_info.get("sender", "unknown")
-    reel_url = reel_info.get("reel_url", "")
+    try:
+        videos = fetch_saved_videos(limit=20)
+    except Exception as e:
+        logger.error("[Source: IG Saved] Scraper error: %s", e)
+        return []
 
     logger.info(
-        "[Source: IG DM] ✅ Found Reel! shortcode=%s from @%s (marked as seen)",
-        reel_info.get("shortcode", "?"), sender,
+        "[Source: IG Saved] Found %d new saved video(s).",
+        len(videos),
     )
-
-    # Download the video directly from the reel URL
-    temp_dir = str(BASE_DIR / "temp_videos")
-    os.makedirs(temp_dir, exist_ok=True)
-    local_path = os.path.join(temp_dir, f"ig_{media_pk}.mp4")
-
-    try:
-        logger.info("[Source: IG DM] Downloading reel video...")
-        import requests as req
-        resp = req.get(reel_url, stream=True, timeout=60)
-        resp.raise_for_status()
-        with open(local_path, "wb") as f:
-            for chunk in resp.iter_content(chunk_size=8192):
-                f.write(chunk)
-        file_size = os.path.getsize(local_path) / (1024 * 1024)
-        logger.info("[Source: IG DM] Downloaded %.1f MB → %s", file_size, local_path)
-    except Exception as e:
-        logger.error("[Source: IG DM] Download failed: %s", e)
-        return None
-
-    return {
-        "source": "IG DM",
-        "media_pk": media_pk,
-        "tweet_id": reel_id,
-        "tweet_text": caption,
-        "author": f"@{sender} (via IG DM)",
-        "video_url": reel_url,
-        "local_path": local_path,
-    }
+    return videos
 
 
 # ===================================================================
@@ -289,18 +223,18 @@ def generate_dashboard(
 
 ## ⚙️ How It Works
 
-1. **Checks** Instagram DMs for shared Reels (priority source)
-2. **Falls back** to X bookmarks for new videos
-3. **Downloads** the video (instagrapi / yt-dlp)
+1. **Checks** Instagram Saved posts for new videos (priority source)
+2. **Falls back** to X bookmarks for new video tweets
+3. **Downloads** the video (yt-dlp)
 4. **Converts** to 9:16 vertical format
 5. **Uploads** to YouTube (unlisted) + Instagram (Reel)
 6. **Updates** this dashboard automatically
 
 | Module | Purpose |
 |---|---|
-| `ig_scraper.py` | Monitor IG DMs for shared Reels |
 | `scraper.py` | Fetch X bookmarks, extract video URLs |
-| `downloader.py` | Download videos (yt-dlp + instagrapi) |
+| `ig_scraper.py` | Fetch IG Saved posts (instaloader) |
+| `downloader.py` | Download videos (yt-dlp) |
 | `uploader.py` | Upload to YouTube + Instagram |
 | `main.py` | Multi-source orchestrator |
 
@@ -322,7 +256,7 @@ def generate_dashboard(
 async def run_pipeline() -> None:
     """
     Executes a single upload cycle:
-      1. Check IG DMs → 2. Fallback to X Bookmarks
+      1. Check IG Saved → 2. Fallback to X Bookmarks
       3. Download → 4. Convert → 5. Upload → 6. Cleanup
       7. Generate README dashboard
     """
@@ -331,90 +265,94 @@ async def run_pipeline() -> None:
     print("=" * 65)
 
     error_msg = None
-    source = "X"
+    source = "IG Saved"
     target = None
     remaining = 0
+    all_videos = []
 
     # ------------------------------------------------------------------
-    # STEP 1: Try Instagram DMs first (priority source)
+    # STEP 1: Try Instagram Saved posts first (priority source)
     # ------------------------------------------------------------------
-    logger.info("[%s] STEP 1 — Checking Instagram DMs...", timestamp())
+    logger.info("[%s] STEP 1 — Checking IG Saved posts...", timestamp())
+    all_videos = _try_ig_saved_source()
 
-    ig_result = _try_ig_dm_source()
-
-    if ig_result:
-        source = "IG DM"
-        target = ig_result
+    if all_videos:
+        source = "IG Saved"
         logger.info(
-            "[%s] [Source: IG DM] Using Reel %s from %s",
-            timestamp(), target["media_pk"], target["author"],
+            "[%s] [Source: IG Saved] Found %d new saved video(s).",
+            timestamp(), len(all_videos),
         )
-
-    # ------------------------------------------------------------------
-    # STEP 2: Fallback to X Bookmarks if no IG Reel
-    # ------------------------------------------------------------------
-    if target is None:
-        logger.info("[%s] STEP 2 — No IG Reel found. Scraping X bookmarks...", timestamp())
+    else:
+        # ------------------------------------------------------------------
+        # STEP 2: Fallback to X Bookmarks
+        # ------------------------------------------------------------------
+        logger.info("[%s] STEP 2 — No IG videos. Scraping X bookmarks...", timestamp())
 
         try:
             all_videos = await fetch_bookmarked_videos(auto_save=False)
         except Exception as e:
-            error_msg = f"Fatal scraper error: {e}"
-            logger.error(error_msg)
-            generate_dashboard(status="Error", error_message=error_msg, source=source)
-            sys.exit(1)
+            logger.warning("[%s] X scraper error: %s", timestamp(), e)
+            all_videos = []
 
-        if not all_videos:
-            logger.info("No new content from any source. Exiting gracefully.")
-            print(f"\n  ✅ No new videos to process. Pipeline complete at {timestamp()}")
-            print(f"  📊 Queue: 0 videos remaining.\n")
-            generate_dashboard(status="Idle", queue_remaining=0, source=source)
-            return
-
-        logger.info(
-            "[%s] [Source: X] Scraper found %d unprocessed video(s).",
-            timestamp(), len(all_videos),
-        )
-
-        # Pick the OLDEST unprocessed video
-        source = "X"
-        video = all_videos[-1]  # bookmarks are newest-first, so last = oldest
-        remaining = len(all_videos) - 1
-
-        logger.info(
-            "[%s] [Source: X] Selected oldest video: tweet %s by %s",
-            timestamp(), video["tweet_id"], video["author"],
-        )
-
-        # Download
-        logger.info("[%s] [Source: X] Downloading video...", timestamp())
-        local_path = None
-        try:
-            local_path = download_video(video["video_url"], video["tweet_id"])
-        except Exception as e:
-            error_msg = f"[Source: X] Download failed for tweet {video['tweet_id']}: {e}"
-            logger.error(error_msg)
-
-        if not local_path:
-            error_msg = error_msg or f"[Source: X] Download returned None for tweet {video['tweet_id']}"
-            logger.error(
-                "❌ [Source: X] Download failed for tweet %s. "
-                "ID NOT saved — will retry next run.",
-                video["tweet_id"],
+        if all_videos:
+            source = "X"
+            logger.info(
+                "[%s] [Source: X] Found %d unprocessed video(s).",
+                timestamp(), len(all_videos),
             )
-            _print_summary(success=False, remaining=remaining + 1, target=video, source=source)
-            generate_dashboard(
-                status="Error",
-                queue_remaining=remaining + 1,
-                last_tweet_id=video["tweet_id"],
-                last_author=video.get("author"),
-                last_timestamp=timestamp(),
-                error_message=error_msg,
-                source=source,
-            )
-            return
 
-        target = {**video, "local_path": local_path}
+    # ------------------------------------------------------------------
+    # No content from either source
+    # ------------------------------------------------------------------
+    if not all_videos:
+        logger.info("No new content from any source. Exiting gracefully.")
+        print(f"\n  ✅ No new videos to process. Pipeline complete at {timestamp()}")
+        print(f"  📊 Queue: 0 videos remaining.\n")
+        generate_dashboard(status="Idle", queue_remaining=0, source=source)
+        return
+
+    # ------------------------------------------------------------------
+    # Pick the OLDEST unprocessed video (last in the list)
+    # ------------------------------------------------------------------
+    video = all_videos[-1]  # both sources return newest-first, so last = oldest
+    remaining = len(all_videos) - 1
+
+    logger.info(
+        "[%s] [Source: %s] Selected oldest video: %s by %s",
+        timestamp(), source, video["tweet_id"], video["author"],
+    )
+
+    # ------------------------------------------------------------------
+    # Download
+    # ------------------------------------------------------------------
+    logger.info("[%s] [Source: %s] Downloading video...", timestamp(), source)
+    local_path = None
+    try:
+        local_path = download_video(video["video_url"], video["tweet_id"])
+    except Exception as e:
+        error_msg = f"[Source: {source}] Download failed for {video['tweet_id']}: {e}"
+        logger.error(error_msg)
+
+    if not local_path:
+        error_msg = error_msg or f"[Source: {source}] Download returned None for {video['tweet_id']}"
+        logger.error(
+            "❌ [Source: %s] Download failed for %s. "
+            "ID NOT saved — will retry next run.",
+            source, video["tweet_id"],
+        )
+        _print_summary(success=False, remaining=remaining + 1, target=video, source=source)
+        generate_dashboard(
+            status="Error",
+            queue_remaining=remaining + 1,
+            last_tweet_id=video["tweet_id"],
+            last_author=video.get("author"),
+            last_timestamp=timestamp(),
+            error_message=error_msg,
+            source=source,
+        )
+        return
+
+    target = {**video, "local_path": local_path}
 
     local_path = target["local_path"]
 
@@ -495,12 +433,7 @@ async def run_pipeline() -> None:
     # Only save ID if AT LEAST ONE upload succeeded
     if yt_ok or ig_ok:
         save_processed_id(target["tweet_id"])
-        if source == "X":
-            logger.info("✅ [Source: X] Tweet %s marked as processed.", target["tweet_id"])
-        else:
-            # For IG DMs: mark-as-seen was already done in ig_scraper
-            # before returning the reel. Just save the ID.
-            logger.info("✅ [Source: IG DM] Reel %s saved to processed_ids.", target["tweet_id"])
+        logger.info("✅ [Source: %s] %s marked as processed.", source, target["tweet_id"])
     else:
         error_msg = (
             f"[Source: {source}] BOTH uploads failed for {target['tweet_id']}. "

@@ -1,4 +1,4 @@
 twikit
 yt-dlp
-requests
 python-dotenv
+instaloader
