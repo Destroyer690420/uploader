@@ -10,7 +10,7 @@
 |---|---|
 | **Status** | ⚪ **Idle** |
 | **Queue** | **0** video(s) waiting |
-| **Last Run** | `2026-02-15 10:39:07 UTC` |
+| **Last Run** | `2026-02-15 10:57:45 UTC` |
 
 ---
 
@@ -18,12 +18,12 @@
 
 | Field | Value |
 |---|---|
-| **Timestamp** | `2026-02-15 16:09:07` |
+| **Timestamp** | `2026-02-15 16:27:45` |
 | **Source** | `instagram` |
-| **ID** | `discord_1472503342298300499` |
+| **ID** | `discord_1472531772037271695` |
 | **Author** | @mac04693 |
 | **YouTube** | ❌ Failed |
-| **Instagram** | ✅ Media ID `18178550560372228` |
+| **Instagram** | ✅ Media ID `18123306961566651` |
 
 ---
 
@@ -52,4 +52,4 @@ _No recent errors._
 
 ---
 
-<sub>Last updated: 2026-02-15 10:39:07 UTC · Powered by GitHub Actions</sub>
+<sub>Last updated: 2026-02-15 10:57:45 UTC · Powered by GitHub Actions</sub>

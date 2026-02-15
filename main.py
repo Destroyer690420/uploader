@@ -349,7 +349,7 @@ async def run_pipeline() -> None:
         )
         return
 
-    if video['source'] == 'discord' and real_caption:
+    if real_caption:
         logger.info("[%s] [INFO] Updating caption from metadata: %s...", timestamp(), real_caption[:30])
         video['tweet_text'] = real_caption
 
