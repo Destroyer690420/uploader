@@ -255,6 +255,7 @@ def upload_to_instagram(
             "upload_type": "resumable",
             "caption": caption[:2200],
             "share_to_feed": str(share_to_feed).lower(),
+            "like_and_view_counts_disabled": "1",
             "access_token": access_token,
         },
     )

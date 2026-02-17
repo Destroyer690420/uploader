@@ -9,8 +9,13 @@
 | Metric | Value |
 |---|---|
 | **Status** | ⚪ **Idle** |
+<<<<<<< HEAD
 | **Queue** | **0** video(s) waiting |
 | **Last Run** | `2026-02-15 11:14:09 UTC` |
+=======
+| **Queue** | **1** video(s) waiting |
+| **Last Run** | `2026-02-15 13:09:25 UTC` |
+>>>>>>> 17f48a3171657e86e97f7dd0df09f21aca2acc0c
 
 ---
 
@@ -18,18 +23,31 @@
 
 | Field | Value |
 |---|---|
+<<<<<<< HEAD
 | **Timestamp** | `2026-02-15 16:44:09` |
 | **Source** | `instagram` |
 | **ID** | `discord_1472531870502621288` |
 | **Author** | @mac04693 |
 | **YouTube** | ❌ Failed |
 | **Instagram** | ✅ Media ID `18098071342741616` |
+=======
+| **Timestamp** | `2026-02-15 18:39:25` |
+| **Source** | `instagram` |
+| **ID** | `discord_1472550245069095171` |
+| **Author** | @mac04693 |
+| **YouTube** | ❌ Failed |
+| **Instagram** | ❌ Failed |
+>>>>>>> 17f48a3171657e86e97f7dd0df09f21aca2acc0c
 
 ---
 
 ## 📋 Error Log
 
-_No recent errors._
+### 🚨 Recent Errors
+
+```
+[Source: instagram] BOTH uploads failed for discord_1472550245069095171. Will retry next run.
+```
 
 ---
 
@@ -52,4 +70,8 @@ _No recent errors._
 
 ---
 
+<<<<<<< HEAD
 <sub>Last updated: 2026-02-15 11:14:09 UTC · Powered by GitHub Actions</sub>
+=======
+<sub>Last updated: 2026-02-15 13:09:25 UTC · Powered by GitHub Actions</sub>
+>>>>>>> 17f48a3171657e86e97f7dd0df09f21aca2acc0c
