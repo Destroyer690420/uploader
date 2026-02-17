@@ -357,6 +357,23 @@ def upload_to_instagram(
 
     media_id = publish_resp.json().get("id")
     logger.info("✅ Instagram Reel published — media ID: %s", media_id)
+
+    # --- Step 5: Hide Like Count ---
+    try:
+        hide_resp = requests.post(
+            f"{IG_GRAPH_URL}/{media_id}",
+            params={
+                "like_and_view_counts_disabled": "true",
+                "access_token": access_token,
+            },
+        )
+        if hide_resp.status_code == 200:
+            logger.info("🙈 Like count hidden for media %s", media_id)
+        else:
+            logger.warning("⚠️ Failed to hide like count: %s", hide_resp.text)
+    except Exception as e:
+        logger.warning("⚠️ Exception hiding like count: %s", e)
+
     return media_id
 
 

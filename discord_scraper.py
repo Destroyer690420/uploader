@@ -19,6 +19,7 @@ Usage:
 import logging
 import os
 import re
+
 from pathlib import Path
 
 import requests
@@ -160,45 +161,34 @@ def fetch_discord_links() -> dict | None:
 
     logger.info("[Discord] Fetched %d messages from channel.", len(messages))
 
-    # Messages come newest-first from Discord API.
     # Process OLDEST first to maintain FIFO queue order.
     for msg in reversed(messages):
         msg_id = msg.get("id", "")
         content = msg.get("content", "")
         author_name = msg.get("author", {}).get("username", "unknown")
 
-        # Try to find a video URL in the message content
+        # Try to find a video URL
         video_url = _extract_video_url(content)
-
         if not video_url:
-            # Also check embeds (sometimes links are in embeds, not content)
+            # Check embeds if text failed
             for embed in msg.get("embeds", []):
-                embed_url = embed.get("url", "")
-                video_url = _extract_video_url(embed_url)
+                video_url = _extract_video_url(embed.get("url", ""))
                 if video_url:
                     break
 
-        if not video_url:
-            logger.debug("[Discord] No video URL in message %s, skipping.", msg_id)
-            continue
+        # If we found a target link, DELETE it instantly so we never get stuck
+        if video_url:
+            logger.info("[Discord] 🗑️ Popping message %s from queue (Link found)", msg_id)
+            _delete_message(channel_id, msg_id)
 
-        source = _determine_source(video_url)
-
-        logger.info(
-            "[Discord] ✅ Found %s link in message %s by @%s: %s",
-            source, msg_id, author_name, video_url,
-        )
-
-        # Delete the message to remove it from the queue
-        _delete_message(channel_id, msg_id)
-
-        return {
-            "tweet_id": f"discord_{msg_id}",
-            "video_url": video_url,
-            "tweet_text": content[:280] if content else "",
-            "author": f"@{author_name}",
-            "source": source,
-        }
+            source = _determine_source(video_url)
+            return {
+                "tweet_id": f"discord_{msg_id}",
+                "video_url": video_url,
+                "tweet_text": content[:280] if content else "",
+                "author": f"@{author_name}",
+                "source": source,
+            }
 
     logger.info("[Discord] No video links found in any message.")
     return None
